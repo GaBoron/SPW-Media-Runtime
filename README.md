@@ -238,5 +238,3 @@ Runtime 将集成来自不同开源项目的第三方组件。
 ---
 
 SPW Media Runtime 是独立的社区项目，与 Salt Player for Windows 官方不存在隶属关系。
-
-项目仓库：[GaBoron/SPW-Media-Runtime](https://github.com/GaBoron/SPW-Media-Runtime)
