@@ -9,7 +9,8 @@
 | 变更类型 | 参考文档 |
 | --- | --- |
 | Runtime Core、模块注册、通信协议、生命周期、并发及原生依赖 | [架构贡献规范](docs/ARCHITECTURE.md) |
-| SDK、公共 API、命名、KDoc、教程、错误说明和 Examples | [开发者体验与文档规范](docs/DEVELOPER_EXPERIENCE.md) |
+| SDK 与公共 API 的能力设计、易用性和兼容性 | [公共 SDK 设计与审查规范](docs/SDK_DESIGN.md) |
+| KDoc、教程、API Reference、错误说明和 Examples | [开发者体验与文档规范](docs/DEVELOPER_EXPERIENCE.md) |
 | 模块实现与平台适配 | 两份规范均适用 |
 
 README 介绍项目定位和规划功能，不代替具体的接口契约或贡献规范。
