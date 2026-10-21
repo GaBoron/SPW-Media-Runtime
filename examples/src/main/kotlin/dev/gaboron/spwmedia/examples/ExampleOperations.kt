@@ -105,7 +105,8 @@ class ExampleOperations(private val pluginId: String, private val config: Config
         val destination = workspace().output("mp4")
         task("可取消的实时转码", { runtime.processing.execute(listOf("-re", "-stream_loop", "-1", "-i", input().toString(), "-t", "120", "-an", "-c:v", "mpeg4", destination.toString())) }) { report("实时转码完成：$destination") }
     }
-    fun cancel() = dispatch { report(if (active?.cancel() == true) "已请求取消，正在等待任务结束" else "没有可取消的任务") }
+    // cancel() may synchronously let result complete; only that callback reports the outcome.
+    fun cancel() = dispatch { val submitted = active; if (submitted == null) report("没有可取消的任务") else submitted.cancel() }
     fun play() = dispatch {
         closePlayer()
         val path = input()

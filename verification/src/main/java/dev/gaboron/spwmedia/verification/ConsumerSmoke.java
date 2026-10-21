@@ -39,10 +39,8 @@ public final class ConsumerSmoke {
             first.directProbe();
             if (System.getProperty("os.name").startsWith("Windows")) first.success("render", "16 字节");
             System.out.println("PASS real example generation, probe, transcode, tags, rendering and error classification");
-            second.invoke("transcode"); second.await(s -> s.text().contains("实时转码，可取消："));
-            second.invoke("cancel"); second.await(s -> s.text().contains("CANCELLED"));
-            Thread.sleep(400);
-            require(second.status().text().contains("CANCELLED"), "Late completion overwrote cancellation");
+            cancel(second, "transcode", "实时转码，可取消：");
+            cancel(first, "slowTranscode", "可取消的实时转码：");
             first.success("play", "共享帧播放已开始"); second.success("play", "共享帧播放已启动");
             first.success("frames", "已收到帧"); second.success("frames", "视频帧序号=");
             first.invoke("slowTranscode"); first.await(s -> s.text().contains("可取消的实时转码："));
@@ -63,6 +61,12 @@ public final class ConsumerSmoke {
         } finally {
             try { released(completed); } finally { recycle(temporary); }
         }
+    }
+    private static void cancel(ConsumerPlugin consumer, String operation, String started) throws Exception {
+        consumer.invoke(operation); consumer.await(s -> s.text().contains(started));
+        consumer.invoke("cancel"); consumer.await(s -> s.text().contains("CANCELLED"));
+        Thread.sleep(400);
+        require(consumer.status().text().contains("CANCELLED"), "Cancellation feedback was overwritten: " + consumer.status().text());
     }
     private static void released(boolean verify) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);

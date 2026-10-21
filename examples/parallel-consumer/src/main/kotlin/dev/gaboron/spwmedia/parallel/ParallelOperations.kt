@@ -94,7 +94,8 @@ class ParallelOperations(private val pluginId: String, private val config: Confi
         val destination = directory.resolve(UUID.randomUUID().toString() + ".mp4")
         submit("实时转码，可取消", { media.processing.execute(listOf("-re", "-stream_loop", "-1", "-i", input().toString(), "-t", "120", "-an", "-c:v", "mpeg4", destination.toString())) }) { report("转码完成：" + destination) }
     }
-    fun cancel() = dispatch { report(if (task?.cancel() == true) "已请求取消，正在等待任务结束" else "没有可取消任务") }
+    // Completion can race with cancel(); keep the task result as the final feedback.
+    fun cancel() = dispatch { val submitted = task; if (submitted == null) report("没有可取消任务") else submitted.cancel() }
     fun play() = dispatch {
         player?.close(); player = null
         val path = input()
