@@ -2,7 +2,6 @@ package dev.gaboron.spwmedia.core
 
 import dev.gaboron.spwmedia.protocol.BufferDescriptor
 import dev.gaboron.spwmedia.provider.WritableBuffer
-import java.awt.Desktop
 import java.lang.foreign.Arena
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
@@ -10,7 +9,7 @@ import java.nio.file.*
 import java.util.UUID
 
 /** Two-phase sequence counter; readers reject blocks changed while being copied. Slow readers skip old blocks. */
-class MappedBuffer(directory: Path, capacity: Int, format: String, width: Int, height: Int) : WritableBuffer {
+class MappedBuffer(directory: Path, capacity: Int, format: String, width: Int, height: Int, private val release: (Path) -> Unit = { recycle(it); Unit }) : WritableBuffer {
     private val arena = Arena.ofShared()
     private val path = directory.resolve("${UUID.randomUUID()}.buffer")
     override val descriptor = BufferDescriptor(path.toString(), capacity, format, width, height)
@@ -47,18 +46,8 @@ class MappedBuffer(directory: Path, capacity: Int, format: String, width: Int, h
         return null
     }
     @Synchronized override fun close() {
-        if (arena.scope().isAlive) arena.close()
-        recycle(path)
+        if (!arena.scope().isAlive) return
+        arena.close()
+        release(path)
     }
-}
-
-/** Cleanup never permanently removes user or temporary files. Unsupported trash leaves the exact file in place. */
-internal fun recycle(path: Path) {
-    if (!Files.exists(path)) return
-    val recycled = runCatching {
-        if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.MOVE_TO_TRASH)) {
-            Desktop.getDesktop().moveToTrash(path.toFile())
-        } else false
-    }.getOrDefault(false)
-    if (!recycled) System.getLogger("SPW Media Runtime").log(System.Logger.Level.WARNING, "Recycle Bin unavailable or file still mapped; retained buffer: $path")
 }

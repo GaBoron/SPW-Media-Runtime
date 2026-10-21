@@ -4,7 +4,6 @@ import dev.gaboron.spwmedia.core.*
 import dev.gaboron.spwmedia.protocol.*
 import dev.gaboron.spwmedia.provider.*
 import kotlinx.serialization.json.*
-import java.awt.Desktop
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
@@ -40,8 +39,10 @@ class SdkConnectionTest {
                 assertEquals("CLIENT_CLOSED", assertFailsWith<MediaRuntimeException> { client.capabilities() }.detail.code)
             }
         } finally {
-            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.MOVE_TO_TRASH)) Desktop.getDesktop().moveToTrash(storage.toFile())
-            else System.err.println("Recycle unavailable; retained test directory: $storage")
+            val helper = System.getProperty("spw.media.recycle.helper")
+            val command = if (System.getProperty("os.name").startsWith("Windows") && helper != null) listOf(helper, storage.toString()) else listOf("gio", "trash", "--", storage.toString())
+            val recycled = runCatching { ProcessBuilder(command).start().waitFor(15, TimeUnit.SECONDS) && !Files.exists(storage) }.getOrDefault(false)
+            if (!recycled) System.err.println("Recycle unavailable; retained test directory: $storage")
         }
     }
 }

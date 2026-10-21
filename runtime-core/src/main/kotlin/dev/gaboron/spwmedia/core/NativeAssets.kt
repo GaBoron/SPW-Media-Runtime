@@ -28,12 +28,13 @@ class NativeAssets(private val root: Path, private val cache: Path? = null) : As
     @Synchronized override fun find(name: String): Path? {
         val target = locate(name) ?: return null
         val pinned = if (cache == null) target else {
-            val active = prepared ?: NativeAssetCache(directory, cache.resolve(platform)).also { prepared = it }
+            val active = prepared ?: NativeAssetCache(directory, cache.resolve(platform)) { recycle(it, locate("recycle")) }.also { prepared = it }
             active.prepare(name, directory.relativize(target))
         }
         if (platform == "linux-x64" && name in setOf("ffmpeg", "ffprobe", "platform")) pinned.toFile().setExecutable(true, true)
         return pinned
     }
     @Synchronized override fun close() { prepared?.close(); prepared = null }
+    @Synchronized internal fun track(process: Process) { prepared?.track(process) }
     override fun version(name: String): String = manifest.getProperty("$name.version", "unknown")
 }

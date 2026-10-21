@@ -74,6 +74,8 @@ if (!$LinuxOnly) {
     New-Item -ItemType Directory -Force -Path $objects | Out-Null
     & $compiler /nologo /std:c++17 /EHsc /O2 /MT /utf-8 "/I$(Join-Path $cacheRoot 'include')" "/I$(Join-Path $sdk 'build/native/include')" "/Fo$objects/" (Join-Path $PSScriptRoot 'windows/main.cpp') (Join-Path $PSScriptRoot 'windows/web.cpp') (Join-Path $PSScriptRoot 'windows/capture.cpp') "/Fe$(Join-Path $output 'spw-platform.exe')" /link (Join-Path $sdk 'build/native/x64/WebView2Loader.dll.lib') ole32.lib user32.lib uuid.lib /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup
     if ($LASTEXITCODE) { throw 'Windows native build failed' }
+    & $compiler /nologo /std:c++17 /EHsc /O2 /MT /utf-8 "/Fo$objects/" (Join-Path $PSScriptRoot 'windows/recycle.cpp') "/Fe$(Join-Path $output 'spw-recycle.exe')" /link ole32.lib shell32.lib uuid.lib /SUBSYSTEM:WINDOWS /ENTRY:wmainCRTStartup
+    if ($LASTEXITCODE) { throw 'Windows silent recycling helper build failed' }
     . (Join-Path $PSScriptRoot 'python.ps1')
     $python = Find-BuildPython $cacheRoot
     & $python (Join-Path $PSScriptRoot 'windows/build_mpv.py') --cache $cacheRoot --output $outputRoot
@@ -89,6 +91,8 @@ platform.path=spw-platform.exe
 platform.version=$projectVersion
 webview2.path=WebView2Loader.dll
 webview2.version=$sdkVersion
+recycle.path=spw-recycle.exe
+recycle.version=$projectVersion
 "@ | Set-Content -LiteralPath (Join-Path $output 'assets.properties') -Encoding utf8
 }
 if (!$WindowsOnly) { & (Join-Path $PSScriptRoot 'linux/prepare.ps1') -CacheRoot $cacheRoot -OutputRoot $outputRoot; if (!$?) { throw 'Linux native preparation failed' } }

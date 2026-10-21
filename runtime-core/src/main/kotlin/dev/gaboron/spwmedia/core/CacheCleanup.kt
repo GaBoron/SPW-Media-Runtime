@@ -23,7 +23,7 @@ fun main(arguments: Array<String>) {
     println("Directories without generation metadata are retained; inspect legacy caches with all hosts stopped.")
 }
 
-internal fun inspectCacheGeneration(directory: Path, currentVersion: String, apply: Boolean, recycler: (Path) -> Unit = ::recycle): String {
+internal fun inspectCacheGeneration(directory: Path, currentVersion: String, apply: Boolean, recycler: (Path) -> Unit = { recycle(it); Unit }): String {
     if (Files.isSymbolicLink(directory) || directory.toRealPath() != directory.toAbsolutePath().normalize()) return "unknown path"
     return generationGate(directory) {
         val marker = directory.resolve(".generation")
@@ -36,6 +36,7 @@ internal fun inspectCacheGeneration(directory: Path, currentVersion: String, app
         val locks = mutableListOf<java.nio.channels.FileLock>()
         try {
             var status = "candidate"
+            Files.list(directory).use { files -> if (files.anyMatch { it.fileName.toString().startsWith(".process-") && processMayBeAlive(it) }) status = "active or unknown process" }
             Files.list(directory).use { entries -> entries.filter { it.fileName.toString().startsWith(".lease-") }.forEach { file ->
                 if (Files.isSymbolicLink(file)) { status = "unknown lease"; return@forEach }
                 val channel = FileChannel.open(file, StandardOpenOption.WRITE); channels.add(channel)

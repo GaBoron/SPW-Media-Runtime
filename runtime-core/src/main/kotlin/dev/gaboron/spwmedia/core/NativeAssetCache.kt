@@ -9,7 +9,7 @@ import java.util.Properties
 import java.util.UUID
 
 /** Immutable, dependency-complete preparation. One lease protects the generation used by this runtime. */
-internal class NativeAssetCache(private val source: Path, parent: Path) : AutoCloseable {
+internal class NativeAssetCache(private val source: Path, parent: Path, private val recycler: (Path) -> Boolean = { recycle(it) }) : AutoCloseable {
     private val manifest = Properties().apply { Files.newInputStream(source.resolve("asset-manifest.properties")).use(::load) }
     private val identity = manifest.getProperty("identity").also { require(it.matches(Regex("[a-f0-9]{64}"))) }
     val directory: Path = parent.resolve(identity).toAbsolutePath().normalize()
@@ -24,7 +24,9 @@ internal class NativeAssetCache(private val source: Path, parent: Path) : AutoCl
         val held = generationGate(directory) {
             Files.createDirectories(directory)
             val channel = FileChannel.open(leasePath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)
-            channel to channel.lock()
+            val held = channel.lock()
+            Files.writeString(directory.resolve(".generation"), "format=1\nversion=${BuildInfo.VERSION}\nidentity=$identity\n")
+            channel to held
         }
         lease = held.first; lock = held.second
     }
@@ -48,7 +50,7 @@ internal class NativeAssetCache(private val source: Path, parent: Path) : AutoCl
                         check(valid(staging, relative)) { "Native dependency copy was incomplete" }
                         try { Files.move(staging, output, StandardCopyOption.ATOMIC_MOVE) }
                         catch (_: AtomicMoveNotSupportedException) { Files.move(staging, output) }
-                    } finally { if (Files.exists(staging)) recycle(staging) }
+                    } finally { if (Files.exists(staging)) recycler(staging) }
                 }
                 verified.add(relative)
             }
@@ -63,7 +65,8 @@ internal class NativeAssetCache(private val source: Path, parent: Path) : AutoCl
         Files.newInputStream(path).use { input -> val buffer = ByteArray(65536); while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) } }
         return digest.digest().joinToString("") { "%02x".format(it) } == manifest.getProperty("file.$relative.digest")
     }
-    @Synchronized override fun close() { if (lock.isValid) lock.release(); if (lease.isOpen) lease.close(); recycle(leasePath) }
+    @Synchronized fun track(process: Process) = trackProcess(directory, process, recycler)
+    @Synchronized override fun close() { if (lock.isValid) lock.release(); if (lease.isOpen) lease.close(); recycler(leasePath) }
 }
 
 internal fun <T> generationGate(directory: Path, action: () -> T): T {

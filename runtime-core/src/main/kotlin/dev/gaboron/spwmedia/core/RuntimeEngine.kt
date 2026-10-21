@@ -22,12 +22,15 @@ class RuntimeEngine(
     private val tasks = ConcurrentHashMap<String, TaskRecord>()
     private val fileLocks = Array(128) { ReentrantLock() }
     private val diagnostics = RuntimeDiagnostics()
+    private val recycler: (Path) -> Boolean = { recycle(it, assets.locate("recycle") ?: System.getProperty("spw.media.recycle.helper")?.let(Path::of)) }
+    private val buffers by lazy { BufferStorage(storage.resolve("buffers"), recycler) }
+    @Volatile private var buffersUsed = false
     private val workers = ThreadPoolExecutor(concurrency, concurrency, 30, TimeUnit.SECONDS, ArrayBlockingQueue(128), { r -> Thread(r, "SPW Media task").apply { isDaemon = true } }, ThreadPoolExecutor.AbortPolicy()).apply { allowCoreThreadTimeOut(true) }
     private val timers = ScheduledThreadPoolExecutor(1) { r -> Thread(r, "SPW Media deadline").apply { isDaemon = true } }.apply { removeOnCancelPolicy = true; setKeepAliveTime(30, TimeUnit.SECONDS); allowCoreThreadTimeOut(true) }
     private val registry = providers.associateBy { it.id }
     @Volatile private var closed = false
 
-    init { require(registry.size == providers.size); Files.createDirectories(storage) }
+    init { require(registry.size == providers.size); Files.createDirectories(storage); recoverBufferStorage(storage.resolve("buffers"), recycler) }
 
     /** Dispatch a protocol request. Calls only perform bookkeeping; media work is submitted to a bounded queue. */
     fun exchange(request: Request, authenticatedPluginId: String): Response = try {
@@ -131,16 +134,20 @@ class RuntimeEngine(
             return id
         }
         override fun session(id: String) = ownedResource(task.owner, id).session
-        override fun process(arguments: List<String>, progress: Boolean, durationSeconds: Double?) = ManagedProcess.run(arguments, task::check, task::onCancel, task::progress, if (progress) durationSeconds else null)
+        override fun process(arguments: List<String>, progress: Boolean, durationSeconds: Double?) = ManagedProcess.run(arguments, task::check, task::onCancel, task::progress, if (progress) durationSeconds else null) { process -> (assets as? NativeAssets)?.track(process) }
         override fun worker(mode: String, arguments: JsonObject, lifetime: ResourceLifetime): ProviderSession {
             task.check()
             val command = workerCommand(mode) ?: throw ProviderFailure("DEPENDENCY_MISSING", "Requested backend is unavailable")
             var startup: AutoCloseable? = null
-            val session = try { WorkerSession(command, arguments) { process -> startup = task.onCancel { ManagedProcess.terminate(process) } } } finally { startup?.close() }
+            val session = try { WorkerSession(command, arguments, mode) { process -> startup = task.onCancel { ManagedProcess.terminate(process) }; (assets as? NativeAssets)?.track(process); if (buffersUsed) buffers.track(process) } } finally { startup?.close() }
             if (lifetime == ResourceLifetime.INVOCATION) task.onCancel { session.close() }
             return session
         }
-        override fun buffer(capacity: Int, format: String, width: Int, height: Int, lifetime: ResourceLifetime) = MappedBuffer(storage.resolve("buffers"), capacity, format, width, height).also { buffer -> if (lifetime == ResourceLifetime.INVOCATION) task.onCancel { buffer.close() } }
+        override fun buffer(capacity: Int, format: String, width: Int, height: Int, lifetime: ResourceLifetime) = synchronized(this@RuntimeEngine) {
+            task.check()
+            buffersUsed = true
+            MappedBuffer(buffers.directory, capacity, format, width, height, buffers::release).also { buffer -> if (lifetime == ResourceLifetime.INVOCATION) task.onCancel { buffer.close() } }
+        }
         override fun <T> withFileLock(path: Path, block: () -> T): T {
             val absolute = path.toAbsolutePath().normalize()
             val canonical = if (Files.exists(absolute)) absolute.toRealPath() else absolute.parent.toRealPath().resolve(absolute.fileName)
@@ -167,11 +174,13 @@ class RuntimeEngine(
         tasks.values.filter { it.owner == token }.forEach { it.cancel(); tasks.remove(it.id) }
         resources.entries.filter { it.value.owner == token }.forEach { if (resources.remove(it.key, it.value)) runCatching { it.value.session.close() } }
     }
-    override fun close() {
+    @Synchronized override fun close() {
+        if (closed) return
         closed = true
         clients.keys.toList().forEach(::disconnect)
         providers.forEach { runCatching { it.close() } }
         workers.shutdownNow(); timers.shutdownNow()
+        if (buffersUsed) buffers.close()
         (assets as? AutoCloseable)?.close()
     }
 }

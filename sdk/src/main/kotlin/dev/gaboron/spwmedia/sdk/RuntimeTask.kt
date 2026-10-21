@@ -13,6 +13,7 @@ class RuntimeTask<T> internal constructor(
     private val completion = CompletableFuture<T>()
     private val publisher = SubmissionPublisher<TaskSnapshot>(executor, 16)
     private var polling: ScheduledFuture<*>? = null
+    private val completed = AtomicBoolean()
     /** Completion of the operation, with structured failures through MediaRuntimeException. Cancelling this future alone does not cancel the backend. */
     val result: CompletionStage<T> get() = completion
     /** Bounded best-effort progress events; slow subscribers may lose intermediate progress. Query [snapshot] for current state. */
@@ -34,7 +35,11 @@ class RuntimeTask<T> internal constructor(
             } catch (e: Throwable) { complete { completion.completeExceptionally(e) } }
         }, 25, 100, TimeUnit.MILLISECONDS)
     }
-    private fun complete(action: () -> Unit) { action(); polling?.cancel(false); publisher.close(); finished(this) }
+    private fun complete(action: () -> Unit) {
+        if (!completed.compareAndSet(false, true)) return
+        try { action() } catch (error: Throwable) { completion.completeExceptionally(error) }
+        finally { polling?.cancel(false); publisher.close(); finished(this) }
+    }
     internal fun disconnected() = complete { completion.completeExceptionally(MediaRuntimeException(RuntimeError("CLIENT_CLOSED", "Connection closed", operationId = id))) }
 }
 

@@ -51,7 +51,7 @@ interface WritableBuffer : AutoCloseable {
     fun latest(): ByteArray?
 }
 /** Recoverable provider error mapped to the public stable error envelope. */
-class ProviderFailure(val code: String, override val message: String, val retryable: Boolean = false) : RuntimeException(message)
+class ProviderFailure(val code: String, override val message: String, val retryable: Boolean = false, val backend: BackendFailure? = null) : RuntimeException(message)
 
 /** Read a string array from validated protocol input. */
 fun JsonObject.strings(name: String): List<String> = get(name)?.jsonArray?.map { it.jsonPrimitive.content } ?: emptyList()

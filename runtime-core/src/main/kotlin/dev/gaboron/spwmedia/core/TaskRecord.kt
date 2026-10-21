@@ -12,10 +12,16 @@ internal class TaskRecord(val id: String, val owner: String, val pluginId: Strin
     private val cancellation = CopyOnWriteArrayList<() -> Unit>()
     @Volatile private var stopped = false
     fun check() { if (stopped || Thread.currentThread().isInterrupted) throw CancellationException() }
-    fun onCancel(action: () -> Unit): AutoCloseable { cancellation.add(action); if (stopped) runCatching(action); return AutoCloseable { cancellation.remove(action) } }
-    @Synchronized fun running(): Boolean { if (stopped) return false; snapshot = snapshot.copy(state = "RUNNING"); return true }
+    fun onCancel(action: () -> Unit): AutoCloseable {
+        val invoked = java.util.concurrent.atomic.AtomicBoolean()
+        val once = { if (invoked.compareAndSet(false, true)) action() }
+        cancellation.add(once)
+        if (stopped) { cancellation.remove(once); runCatching(once) }
+        return AutoCloseable { cancellation.remove(once) }
+    }
+    @Synchronized fun running(): Boolean { if (snapshot.state != "QUEUED") return false; snapshot = snapshot.copy(state = "RUNNING"); return true }
     @Synchronized fun progress(value: Double) { if (snapshot.state == "RUNNING") snapshot = snapshot.copy(progress = value.coerceIn(0.0, 1.0)) }
-    @Synchronized fun success(result: JsonElement) { if (!stopped) { snapshot = snapshot.copy(state = "SUCCEEDED", progress = 1.0, result = result); timeout?.cancel(false); cancellation.clear() } }
+    @Synchronized fun success(result: JsonElement) { if (!stopped) { stopped = true; snapshot = snapshot.copy(state = "SUCCEEDED", progress = 1.0, result = result); timeout?.cancel(false); cancellation.clear() } }
     fun fail(error: Throwable) {
         synchronized(this) {
             if (stopped) return
@@ -57,5 +63,5 @@ internal fun publicError(error: Throwable, plugin: String = "", operation: Strin
         "PERMISSION_DENIED" -> "Access to the requested resource was denied"
         else -> "Operation failed ($code)"
     }
-    return RuntimeError(code, message, plugin, operation, session, (root as? ProviderFailure)?.retryable ?: false)
+    return RuntimeError(code, message, plugin, operation, session, (root as? ProviderFailure)?.retryable ?: false, (root as? ProviderFailure)?.backend)
 }

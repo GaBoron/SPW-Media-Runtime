@@ -16,7 +16,9 @@ object Protocol {
 /** A transport response carries either a JSON value or a stable error, never an implementation exception. */
 @Serializable data class Response(val value: JsonElement = JsonNull, val error: RuntimeError? = null)
 /** Error codes are open strings; callers must retain a fallback for future codes. */
-@Serializable data class RuntimeError(val code: String, val message: String, val pluginId: String = "", val operationId: String = "", val sessionId: String = "", val retryable: Boolean = false)
+@Serializable data class RuntimeError(val code: String, val message: String, val pluginId: String = "", val operationId: String = "", val sessionId: String = "", val retryable: Boolean = false, val backend: BackendFailure? = null)
+/** Owner-only failure context. stderrTail is redacted and limited to 8 KiB of UTF-8; diagnostics omit it. */
+@Serializable data class BackendFailure(val backend: String, val exitCode: Int? = null, val stderrTail: String = "")
 /** Redacted failure record. Contains no media path, URL, script, cookie or backend output. Time is epoch milliseconds. */
 @Serializable data class DiagnosticEvent(val timestampMillis: Long, val error: RuntimeError)
 /** Availability describes the current platform/dependencies, not a successful functional acceptance run. */

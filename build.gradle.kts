@@ -27,6 +27,9 @@ subprojects {
         archiveBaseName.set("spw-media-${project.name}")
         from(rootProject.file("LICENSE")) { into("META-INF") }
     }
+    tasks.withType<Test>().configureEach {
+        systemProperty("spw.media.recycle.helper", rootProject.file("build/native/windows-x64/spw-recycle.exe").absolutePath)
+    }
     if (name in setOf("protocol", "sdk", "sdk-compose", "provider-api")) {
         apply(plugin = "maven-publish")
         apply(plugin = "org.jetbrains.dokka")
@@ -68,6 +71,12 @@ project(":protocol") {
 }
 project(":provider-api") { dependencies { "api"(project(":protocol")) } }
 project(":runtime-core") { dependencies { "api"(project(":provider-api")) } }
+project(":runtime-core") {
+    tasks.withType<Test>().configureEach {
+        jvmArgs("--enable-native-access=ALL-UNNAMED")
+        doFirst { systemProperty("spw.test.classpath", project.extensions.getByType<SourceSetContainer>()["test"].runtimeClasspath.asPath) }
+    }
+}
 project(":native-worker") { dependencies { "implementation"(project(":protocol")); "implementation"("net.java.dev.jna:jna:5.18.1") } }
 listOf("processing", "playback", "web", "metadata", "audio", "rendering").forEach { module ->
     project(":providers:$module") { dependencies { "implementation"(project(":provider-api")) } }
@@ -132,7 +141,7 @@ tasks.register<Zip>("plugin") {
     into("licenses") { from("LICENSE", "NOTICE", "third-party") }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     doFirst {
-        listOf("windows-x64/ffmpeg.exe", "windows-x64/ffprobe.exe", "windows-x64/libmpv-2.dll", "windows-x64/spw-platform.exe", "linux-x64/bin/ffmpeg", "linux-x64/bin/ffprobe", "linux-x64/lib/libmpv.so.2").forEach {
+        listOf("windows-x64/ffmpeg.exe", "windows-x64/ffprobe.exe", "windows-x64/libmpv-2.dll", "windows-x64/spw-platform.exe", "windows-x64/spw-recycle.exe", "linux-x64/bin/ffmpeg", "linux-x64/bin/ffprobe", "linux-x64/lib/libmpv.so.2").forEach {
             check(layout.buildDirectory.file("native/$it").get().asFile.isFile) { "Missing native asset: $it" }
         }
     }
@@ -145,6 +154,7 @@ tasks.register<JavaExec>("cacheCleanup") {
     dependsOn(":runtime-core:classes")
     classpath = project(":runtime-core").extensions.getByType<SourceSetContainer>()["main"].runtimeClasspath + configurations.detachedConfiguration(dependencies.create("org.jetbrains.kotlin:kotlin-stdlib:2.4.20"))
     mainClass.set("dev.gaboron.spwmedia.core.CacheCleanupKt")
+    systemProperty("spw.media.recycle.helper", file("build/native/windows-x64/spw-recycle.exe").absolutePath)
     javaLauncher.set(project(":runtime-core").extensions.getByType<JavaToolchainService>().launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
     args(providers.gradleProperty("runtimeDataDir").getOrElse(""), providers.gradleProperty("cacheGeneration").getOrElse(""), providers.gradleProperty("applyCleanup").getOrElse("false"))
 }
