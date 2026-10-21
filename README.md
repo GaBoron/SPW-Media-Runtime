@@ -6,7 +6,19 @@
 
 在此基础上，Runtime 提供音视频处理、视频播放、网页嵌入、媒体分析等通用能力，并统一管理按需加载、任务并发及运行状态。
 
-**项目状态：规划阶段，尚未发布可用版本。**
+**当前版本：0.1.0 开发版，尚未正式发布。** Runtime、SDK 和各能力 Provider 的源码已提供；构建验证与实际 SPW 环境中的功能验收是两个独立步骤。
+
+## 获取与接入
+
+本地构建交付物位于 `build/distributions/`：通用的 `spw-media-runtime-0.1.0.spmod`、SDK Maven 仓库归档及示例插件。将 Runtime 导入 SPW 创意工坊并启用，再启动使用它的插件。
+
+- 插件开发者从 [SDK 快速入门](docs/GETTING_STARTED.md) 开始。
+- 各模块的调用、线程和资源约定见 [使用指南](docs/USAGE.md)。
+- 协议、错误和版本约定见 [接口契约](docs/CONTRACTS.md)。
+- 构建条件与命令见 [贡献指南](CONTRIBUTING.md#构建工程)。
+- 原生组件来源和许可见 [第三方组件](third-party/README.md)。
+
+运行环境为 SPW 1.19.0 或更新的兼容宿主及 JDK 25。Windows 以 x64、Windows 10 22H2 或更新版本为目标；Linux 为 x64、glibc 2.35 或更新版本，播放需要桌面和 ALSA 环境。WebView2 使用系统 Evergreen Runtime，未安装时返回 `DEPENDENCY_MISSING`。
 
 ## 项目定位
 
@@ -27,7 +39,7 @@ SPW Media Runtime 的首要目标是消除这类重复依赖。插件通过公�
 - **状态可观察**：所有模块提供明确的状态、结果和错误反馈，避免内部故障无法被调用方感知。
 - **模块化扩展**：不同能力独立演进，新增功能不应要求重构整个运行时。
 
-## 规划模块
+## 能力模块
 
 | 模块 | 主要技术 | 提供的能力 |
 |---|---|---|
@@ -38,7 +50,7 @@ SPW Media Runtime 的首要目标是消除这类重复依赖。插件通过公�
 | Audio Analysis | 原生音频采集及分析组件 | 实时频谱、波形、响度及其他音频分析 |
 | Media Rendering | Compose / Skia 桥接 | 视频帧交付、图像处理及宿主界面集成 |
 
-以上模块均处于规划阶段。具体底层组件、实现范围及接口可能随开发调整。
+上述模块具有独立 Provider 实现。0.1.0 的具体支持边界见下方平台表与使用指南；源码实现和构建成功不代表已经完成真实宿主中的功能验收。
 
 ### Media Processing
 
@@ -68,7 +80,7 @@ FFmpeg 和 libmpv 的功能相互补充。Runtime 将研究兼容构建下的底
 
 提供网页嵌入与浏览器会话管理。
 
-计划支持：
+提供：
 
 - 页面导航、加载状态及错误事件。
 - JavaScript 与插件之间的受控通信。
@@ -79,7 +91,7 @@ FFmpeg 和 libmpv 的功能相互补充。Runtime 将研究兼容构建下的底
 
 每个插件默认拥有独立的持久化 Profile。同一插件的多个浏览器实例可以复用其会话，不同插件之间的账户数据默认隔离。
 
-当前规划使用 Microsoft WebView2，支持 Windows 平台。
+使用 Microsoft WebView2，支持 Windows 平台。
 
 Runtime 仅提供通用浏览器能力，不实现特定网站的业务逻辑。
 
@@ -109,7 +121,7 @@ Runtime 仅提供通用浏览器能力，不实现特定网站的业务逻辑。
 
 提供通用视频帧和图像渲染接入能力。
 
-计划支持视频帧交付、像素格式转换、渲染目标管理及 Compose / Skia 界面集成。
+提供视频帧交付、BGRA/RGBA 转换、渲染目标管理及 Compose / Skia 界面集成。共享帧使用有界缓冲和 CPU 上传；不承诺零复制或特定帧率。
 
 高频视频数据应使用适合的内存或原生渲染通道，不通过普通控制消息逐帧传输。
 
@@ -203,13 +215,13 @@ Runtime 通过版本化公共 API 向其他 SPW 插件开放能力。
 
 | 模块 | Windows | Linux |
 |---|---|---|
-| Runtime Core | 计划支持 | 计划支持 |
-| FFmpeg / FFprobe | 计划支持 | 计划支持 |
-| libmpv | 计划支持 | 计划支持 |
-| Media Metadata | 计划支持 | 计划支持 |
-| Web Engine | WebView2（计划支持） | 暂不支持 |
-| Audio Analysis | 计划支持 | 待确定 |
-| Media Rendering | 计划支持 | 待确定 |
+| Runtime Core | 已实现 | 已实现 |
+| FFmpeg / FFprobe | 已实现 | 已实现 |
+| libmpv | 软件显示窗口、HWND 嵌入或共享帧 | ALSA 音频、软件帧与独立窗口 |
+| Media Metadata | 已实现 | 已实现 |
+| Web Engine | WebView2 | 不支持 |
+| Audio Analysis | WASAPI、PCM 分析 | 不支持 |
+| Media Rendering | 共享帧、转换、Compose/Skia | 不支持 |
 
 实际支持范围以正式发布版本及对应模块文档为准。
 
@@ -225,7 +237,7 @@ Runtime 将集成来自不同开源项目的第三方组件，并集中管理其
 
 对于存在许可证限制的依赖，应根据实际使用和分发方式选择合适的构建版本，不假定不同许可证的组件可以直接合并分发。
 
-项目自身的许可证将在确认整体依赖关系后确定。
+项目及 SDK 使用 [Apache-2.0](LICENSE)。第三方组件保留各自许可证；原生资源包不包括 GPL 专用编码器，也不包含浏览器运行环境。
 
 ## 开发路线
 

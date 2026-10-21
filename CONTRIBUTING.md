@@ -54,3 +54,19 @@ PR 标题应概括实际变更。描述建议涵盖以下信息，并按变更�
 ## 第三方组件与许可
 
 引入或更新第三方组件时，请说明来源、版本、平台支持、构建/分发方式及许可证义务。原生库兼容性、重复打包和许可证限制均属于审查范围。项目自身及第三方组件的许可要求以仓库当前文件及实际分发方式为准。
+
+## 构建工程
+
+JVM 工程使用 Gradle Wrapper 与 JDK 25。完整原生准备入口在 Windows x64 上运行，需要 PowerShell 7、Windows SDK 与 MSVC x64；工具缺失时应安装对应开发组件。Linux 工件由便携 Zig、Meson、Ninja 与固定 Ubuntu 22.04 sysroot 交叉构建，不要求安装 WSL。
+
+```powershell
+.\gradlew.bat delivery
+```
+
+首次构建需要联网下载固定版本的媒体资源与构建工具，之后可复用 `build/native-cache/`。`native/prepare.ps1 -WindowsOnly` 或 `-LinuxOnly` 可单独准备平台资源。完整 `plugin` 任务检查两平台必需资产，不生成缺失组件的通用包。
+
+`nativeSources` 还会收集匹配的媒体依赖源码。FFmpeg 上游源码缓存通过已登录的 GitHub CLI 获取，或由环境变量 `SPW_MEDIA_FFMPEG_SOURCES` 指向已保存的 `cache.tar.gz` ZIP；固定构建记录及本地归档名称见 [第三方组件](third-party/README.md)。离线构建须保留该归档与构建缓存。
+
+`sdkBundle` 将 SDK、协议、Provider 契约及可选 Compose 接入发布到 `build/maven/` 并打包为本地 Maven 仓库；Dokka 的版本对应接口参考生成在各模块的 `build/dokka/html/`。`examplePlugin` 生成可安装示例包。
+
+构建时可使用仓库外或忽略目录内的临时代码验证 SDK 接口和类加载连接。测试源码、夹具与验证报告不作为本工程的追踪内容。Examples 是公开接入文档的一部分，随实现保留并编译；功能验收由使用者在目标宿主中进行。
