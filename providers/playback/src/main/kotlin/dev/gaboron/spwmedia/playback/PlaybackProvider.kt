@@ -7,7 +7,7 @@ import kotlinx.serialization.json.*
 /** Independent libmpv workers; a crashed player cannot crash the SPW JVM. */
 class PlaybackProvider : MediaProvider {
     override val id = "playback"
-    override fun availability(assets: Assets) = Capability(id, available = assets.locate("mpv") != null, reason = if (assets.platform == "unsupported") "UNSUPPORTED_PLATFORM" else "libmpv required", features = listOf("player", "commands", "hardware-decoding", "state", "frames"))
+    override fun availability(assets: Assets) = Capability(id, available = assets.locate("mpv") != null && assets.locate("worker") != null, reason = if (assets.platform == "unsupported") "UNSUPPORTED_PLATFORM" else "libmpv and JVM worker bootstrap required", features = listOf("player", "commands", "hardware-decoding", "state", "frames"))
     override fun invoke(context: Invocation, operation: String, arguments: JsonObject): JsonElement {
         if (operation != "open") throw ProviderFailure("OPERATION_UNSUPPORTED", "Unknown playback operation")
         val requested = Protocol.json.decodeFromJsonElement<PlayerOptions>(arguments)

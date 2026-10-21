@@ -66,6 +66,12 @@ internal class NativeAssetCache(private val source: Path, parent: Path, private 
         return digest.digest().joinToString("") { "%02x".format(it) } == manifest.getProperty("file.$relative.digest")
     }
     @Synchronized fun track(process: Process) = trackProcess(directory, process, recycler)
+    @Synchronized fun externalTool(): AutoCloseable {
+        check(lock.isValid)
+        val marker = directory.resolve(".external-tool-${UUID.randomUUID()}")
+        recordProcess(marker, ProcessHandle.current())
+        return AutoCloseable { recycler(marker) }
+    }
     @Synchronized override fun close() { if (lock.isValid) lock.release(); if (lease.isOpen) lease.close(); recycler(leasePath) }
 }
 

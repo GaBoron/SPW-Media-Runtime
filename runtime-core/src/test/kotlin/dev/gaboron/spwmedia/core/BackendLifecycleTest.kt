@@ -7,6 +7,16 @@ import java.util.concurrent.*
 import kotlin.test.*
 
 class BackendLifecycleTest {
+    @Test fun unavailableWorkerReturnsOwnerScopedStartupDetail() {
+        val failure = assertFailsWith<ProviderFailure> { WorkerSession(listOf("missing-spw-test-backend"), obj(), "playback") {} }
+        assertEquals("BACKEND_START_FAILED", failure.code)
+        assertEquals("playback", failure.backend?.backend)
+        assertNull(failure.backend?.exitCode)
+        val history = RuntimeDiagnostics()
+        history.record(publicError(failure, "plugin"))
+        assertNull(history.forPlugin("plugin").single().error.backend)
+        assertTrue(history.forPlugin("other").isEmpty())
+    }
     @Test fun cancellationTerminatesTheObservedProcessTree() {
         val task = TaskRecord("operation", "connection", "plugin")
         val started = CompletableFuture<Process>()
@@ -41,9 +51,16 @@ class BackendLifecycleTest {
     }
     @Test fun outputAndControlLinesAreBoundedWithoutNewlines() {
         assertEquals(1024, BackendOutput(1024).capture(StringReader("x".repeat(500_000))).length)
+        val unicode = BackendOutput(1024).capture(StringReader("中😀".repeat(10_000)))
+        assertTrue(unicode.toByteArray().size <= 1024)
+        assertFalse('\uFFFD' in unicode)
         assertFailsWith<IllegalArgumentException> { readControlLine(StringReader("x".repeat(1_048_577))) }
         val redacted = BackendRedaction.tail("echo abc-private-value", listOf("--token", "abc-private-value"))
         assertFalse("abc-private-value" in redacted)
+        assertFalse("bearer-private-value" in BackendRedaction.tail("echo bearer-private-value", listOf("-headers", "Authorization: Bearer bearer-private-value")))
+        assertFalse("short=xy" in BackendRedaction.tail("short=xy", listOf("--password", "xy")))
+        assertEquals("[redacted]", BackendRedaction.tail("a", listOf("--token", "a", "--secret", "r")))
+        assertFalse("cookie-private-value" in BackendRedaction.tail("echo cookie-private-value", listOf("{\"cookie\":\"sid=cookie-private-value\"}")))
         assertTrue(BackendRedaction.tail("中".repeat(10_000)).toByteArray().size <= 8192)
     }
     @Test fun closeCompletesPendingCommandsAndTerminatesWorker() {

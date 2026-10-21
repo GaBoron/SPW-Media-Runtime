@@ -6,11 +6,13 @@
 
 在此基础上，Runtime 提供音视频处理、视频播放、网页嵌入、媒体分析等通用能力，并统一管理按需加载、任务并发及运行状态。
 
-**当前版本：0.1.0 开发版，尚未正式发布。** Runtime、SDK 和各能力 Provider 的源码已提供；构建验证与实际 SPW 环境中的功能验收是两个独立步骤。
+**已提供 0.1.0 预发布版。** 项目仍处于开发阶段；构建验证与实际 SPW 环境中的功能验收是两个独立步骤。
 
 ## 获取与接入
 
-本地构建交付物位于 `build/distributions/`：通用的 `spw-media-runtime-0.1.0.spmod`、SDK Maven 仓库归档及示例插件。将 Runtime 导入 SPW 创意工坊并启用，再启动使用它的插件。
+从 [Releases](https://github.com/GaBoron/SPW-Media-Runtime/releases) 获取对应版本的 Runtime、SDK 和接口参考。将 Runtime 导入 SPW 创意工坊并启用，再启动使用它的插件。
+
+本地构建交付物位于 `build/distributions/`，包含通用 Runtime `.spmod`、SDK Maven 仓库归档、接口参考及示例插件；本地源码的支持边界以随附文档为准。
 
 - 插件开发者从 [SDK 快速入门](docs/GETTING_STARTED.md) 开始。
 - 各模块的调用、线程和资源约定见 [使用指南](docs/USAGE.md)。

@@ -72,7 +72,9 @@ def generate(root):
     records = []
     for relative in sorted({p for group in groups.values() for p in group}):
         file = root / relative
-        records.extend((f'file.{relative}.size={file.stat().st_size}', f'file.{relative}.digest={hashlib.file_digest(file.open("rb"), "sha256").hexdigest()}'))
+        with file.open('rb') as stream:
+            digest = hashlib.file_digest(stream, 'sha256').hexdigest()
+        records.extend((f'file.{relative}.size={file.stat().st_size}', f'file.{relative}.digest={digest}'))
     records.extend(f'asset.{name}.files={",".join(paths)}' for name, paths in sorted(groups.items()))
     identity = hashlib.sha256('\n'.join(records).encode()).hexdigest()
     (root / 'asset-manifest.properties').write_text(f'format=1\nidentity={identity}\n' + '\n'.join(records) + '\n', encoding='ascii')

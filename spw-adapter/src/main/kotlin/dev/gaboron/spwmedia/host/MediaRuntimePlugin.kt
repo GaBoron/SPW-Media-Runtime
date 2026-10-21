@@ -32,7 +32,7 @@ class MediaRuntimePlugin(context: PluginContext) : SpwPlugin(context) {
         val assets = NativeAssets(root.resolve("native"), storage.resolve("native").resolve(pluginContext.pluginVersion))
         val engine = RuntimeEngine(listOf(ProcessingProvider(), PlaybackProvider(), WebProvider(), MetadataProvider(), AudioProvider(), RenderingProvider()), assets, storage, emptyMap(), workerCommand = { mode ->
             when (mode) {
-                "playback" -> assets.find("mpv")?.let { library -> listOf(Path.of(System.getProperty("java.home"), "bin", if (assets.platform.startsWith("windows")) "java.exe" else "java").toString(), "--enable-native-access=ALL-UNNAMED", "-cp", classpath, "dev.gaboron.spwmedia.worker.WorkerMainKt", library.toString()) }
+                "playback" -> WorkerCommands.playback(assets, classpath)
                 "web", "capture" -> assets.find("platform")?.let { listOf(it.toString(), mode) }
                 else -> null
             }

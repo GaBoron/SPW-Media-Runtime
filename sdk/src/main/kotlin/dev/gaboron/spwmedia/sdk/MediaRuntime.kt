@@ -96,7 +96,11 @@ class MediaRuntime private constructor(private val pluginId: String) : AutoClose
     }
 
     companion object {
-        /** Connect using PluginContext.pluginId, on a background thread; throws RUNTIME_UNAVAILABLE if absent. */
+        /**
+         * Connect using PluginContext.pluginId, on a background thread; throws RUNTIME_UNAVAILABLE if absent.
+         * A failed attempt retains no connection; callers may retry after Runtime starts.
+         * After Runtime restarts, close the old client and request a new one; tasks and sessions are not replayed.
+         */
         @JvmStatic fun connect(pluginId: String): MediaRuntime {
             require(pluginId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}"))) { "Invalid plugin ID" }
             return MediaRuntime(pluginId)

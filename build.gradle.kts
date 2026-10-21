@@ -53,6 +53,7 @@ subprojects {
 project(":sdk") { dependencies { "api"(project(":protocol")) } }
 project(":sdk") { dependencies { "testImplementation"(project(":runtime-core")) } }
 project(":protocol") {
+    dependencies { "api"("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0") }
     val generated = layout.buildDirectory.dir("generated/version")
     val generateVersion = tasks.register("generateVersion") {
         inputs.property("version", project.version.toString())
@@ -103,9 +104,12 @@ project(":sdk-compose") {
     }
 }
 project(":examples") {
+    apply(plugin = "org.jetbrains.kotlin.plugin.compose")
+    apply(plugin = "org.jetbrains.compose")
     dependencies {
         "implementation"(project(":sdk"))
         "implementation"(project(":sdk-compose"))
+        "compileOnly"("org.jetbrains.compose.desktop:desktop:1.12.1")
         "compileOnly"(hostApi) { isTransitive = false }
         "compileOnly"("org.pf4j:pf4j:3.12.0")
     }
@@ -122,6 +126,7 @@ val exampleClasspath = configurations.create("exampleRuntime") {
     attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
 }
 dependencies.add(exampleClasspath.name, project(":sdk"))
+dependencies.add(exampleClasspath.name, project(":sdk-compose"))
 tasks.register<Exec>("prepareNative") {
     commandLine("pwsh", "-NoProfile", "-File", "native/prepare.ps1")
 }
@@ -141,7 +146,7 @@ tasks.register<Zip>("plugin") {
     into("licenses") { from("LICENSE", "NOTICE", "third-party") }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     doFirst {
-        listOf("windows-x64/ffmpeg.exe", "windows-x64/ffprobe.exe", "windows-x64/libmpv-2.dll", "windows-x64/spw-platform.exe", "windows-x64/spw-recycle.exe", "linux-x64/bin/ffmpeg", "linux-x64/bin/ffprobe", "linux-x64/lib/libmpv.so.2").forEach {
+        listOf("windows-x64/ffmpeg.exe", "windows-x64/ffprobe.exe", "windows-x64/libmpv-2.dll", "windows-x64/spw-platform.exe", "windows-x64/spw-recycle.exe", "windows-x64/spw-jvm-worker.exe", "linux-x64/bin/ffmpeg", "linux-x64/bin/ffprobe", "linux-x64/lib/libmpv.so.2", "linux-x64/bin/spw-jvm-worker").forEach {
             check(layout.buildDirectory.file("native/$it").get().asFile.isFile) { "Missing native asset: $it" }
         }
     }
@@ -166,7 +171,7 @@ tasks.register<Zip>("sdkBundle") {
 }
 tasks.register("delivery") {
     dependsOn(subprojects.filter { it.path != ":providers" }.map { "${it.path}:check" })
-    dependsOn("plugin", "sdkBundle", "apiBundle", "nativeSources", "examplePlugin", ":examples:classes")
+    dependsOn("plugin", "sdkBundle", "apiBundle", "nativeSources", "examplePlugin", "parallelExamplePlugin", ":examples:classes")
 }
 tasks.register<Zip>("apiBundle") {
     listOf("sdk", "sdk-compose", "protocol", "provider-api").forEach { module ->
@@ -189,7 +194,7 @@ tasks.register<Copy>("stageJvm") {
     from(configurations.detachedConfiguration(dependencies.create("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")))
 }
 project(":examples").tasks.named<Jar>("jar") {
-    manifest.attributes(mapOf("Plugin-Id" to "spw-media-example", "Plugin-Class" to "dev.gaboron.spwmedia.examples.MediaExamplePlugin", "Plugin-Version" to project.version, "Plugin-Provider" to "GaBoron", "Plugin-Name" to "SPW Media Example", "Plugin-Has-Config" to "false"))
+    manifest.attributes(mapOf("Plugin-Id" to "spw-media-example", "Plugin-Class" to "dev.gaboron.spwmedia.examples.MediaExamplePlugin", "Plugin-Version" to project.version, "Plugin-Provider" to "GaBoron", "Plugin-Name" to "SPW Media Example", "Plugin-Has-Config" to "true"))
 }
 tasks.register<Zip>("examplePlugin") {
     dependsOn(":examples:jar", ":sdk:jar", ":protocol:jar")
@@ -203,3 +208,13 @@ tasks.register<Zip>("examplePlugin") {
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }
+tasks.register<GradleBuild>("parallelExamplePlugin") {
+    dependsOn("sdkBundle")
+    dir = file("examples/parallel-consumer")
+    tasks = listOf("plugin")
+    startParameter.projectProperties = mapOf("sdkRepository" to file("build/maven").toURI().toString(), "sdkVersion" to project.version.toString(), "outputDir" to file("build/distributions").absolutePath)
+    startParameter.systemPropertiesArgs = gradle.startParameter.systemPropertiesArgs
+    startParameter.setOffline(gradle.startParameter.isOffline)
+}
+
+apply(from = "gradle/package-checks.gradle.kts")

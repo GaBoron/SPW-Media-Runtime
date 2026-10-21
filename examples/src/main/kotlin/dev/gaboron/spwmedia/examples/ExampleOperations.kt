@@ -1,0 +1,186 @@
+@file:OptIn(com.xuncorp.spw.workshop.api.UnstableSpwWorkshopApi::class)
+package dev.gaboron.spwmedia.examples
+
+import com.xuncorp.spw.workshop.api.config.ConfigHelper
+import dev.gaboron.spwmedia.protocol.*
+import dev.gaboron.spwmedia.sdk.*
+import java.nio.file.*
+import java.util.concurrent.*
+
+/** Public-SDK workflows; all media writes go to an owned temporary directory. */
+class ExampleOperations(private val pluginId: String, private val config: ConfigHelper) : AutoCloseable {
+    private val executor = Executors.newSingleThreadScheduledExecutor { Thread(it, "Media example actions").apply { isDaemon = true } }
+    private var connecting = false
+    @Volatile private var stopped = false
+    @Volatile private var connection: MediaRuntime? = null
+    @Volatile private var active: RuntimeTask<*>? = null
+    @Volatile private var player: Player? = null
+    @Volatile private var browser: Browser? = null
+    @Volatile private var capture: AudioCapture? = null
+    @Volatile private var preview: ExamplePreview? = null
+    private val directProcesses = ConcurrentHashMap.newKeySet<Process>()
+    private var samples: ExampleSamples? = null
+    @Volatile var status = "尚未连接"
+        private set
+    @Volatile var connectionError: String? = null
+        private set
+    val runtime: MediaRuntime get() = connection ?: error("请先启用 Runtime 并重新启用本示例")
+    fun connect() = dispatch {
+        if (connecting) return@dispatch
+        connection?.let { existing ->
+            if (runCatching { existing.capabilities() }.isSuccess) { report("已连接 Runtime"); return@dispatch }
+            closeOwnedSessions()
+            runCatching { active?.cancel() }; active = null
+            runCatching { existing.close() }; connection = null
+        }
+        connecting = true
+        connectAttempt(0)
+    }
+    private fun connectAttempt(attempt: Int) {
+        if (stopped) return
+        try {
+            val client = MediaRuntime.connect(pluginId)
+            synchronized(this) { if (stopped) { client.close(); return }; connection = client }
+            connectionError = null
+            connecting = false
+            report("已连接；能力：" + client.capabilities().filter { it.available }.joinToString { it.id })
+        } catch (error: Throwable) {
+            connectionError = (error as? MediaRuntimeException)?.detail?.code ?: "CONNECTION_FAILED"
+            if (connectionError == "RUNTIME_UNAVAILABLE" && attempt < 29 && !stopped) {
+                report("等待 Runtime 启用（${attempt + 1}/30）")
+                try { executor.schedule({ connectAttempt(attempt + 1) }, 1, TimeUnit.SECONDS) }
+                catch (_: RejectedExecutionException) { connecting = false }
+            } else { connecting = false; failure(error) }
+        }
+    }
+    private fun report(value: String) {
+        status = value.take(4096)
+        if (!stopped) synchronized(config) { config.set("status", status); config.save() }
+    }
+    private fun failure(error: Throwable) {
+        var cause = error
+        while (cause is CompletionException || cause is ExecutionException) cause = cause.cause ?: break
+        val detail = (cause as? MediaRuntimeException)?.detail
+        report(if (detail == null) "操作失败：${cause.message ?: cause.javaClass.simpleName}" else "${detail.code}: ${detail.message}" + (detail.backend?.let { "\n${it.backend} exit=${it.exitCode}\n${it.stderrTail.takeLast(1800)}" } ?: ""))
+    }
+    private fun dispatch(action: () -> Unit) {
+        if (stopped) return
+        try { executor.execute { if (!stopped) try { action() } catch (error: Throwable) { failure(error) } } }
+        catch (_: RejectedExecutionException) { /* stop won the race */ }
+    }
+    private fun input(): Path {
+        config.reload()
+        val explicit = config.get("input", "").takeIf { it.isNotBlank() }
+        val path = explicit?.let(Path::of) ?: samples?.video?.takeIf(Files::isRegularFile)
+            ?: config.get("generatedVideo", "").takeIf { it.isNotBlank() }?.let(Path::of)
+            ?: error("先点击生成测试视频并等待完成，或填写输入路径")
+        require(Files.isRegularFile(path)) { if (explicit == null) "测试视频不存在，请重新生成并等待完成" else "输入媒体不存在：$path" }
+        return path
+    }
+    private fun workspace() = samples ?: ExampleSamples().also { samples = it }
+    private fun <T> task(label: String, create: () -> RuntimeTask<T>, complete: (T) -> Unit = { report("$label：完成") }) {
+        check(active == null) { "已有任务，请先取消或等待完成" }
+        val submitted = create(); active = submitted; report("$label：${submitted.id}")
+        submitted.result.whenComplete { value, error ->
+            synchronized(this) { if (active === submitted) active = null }
+            if (error != null) failure(error) else try { complete(value) } catch (failure: Throwable) { this.failure(failure) }
+        }
+    }
+    fun generate() = dispatch {
+        val sample = workspace()
+        task("生成无声测试视频", { runtime.processing.execute(sample.videoArguments()) }) {
+            synchronized(config) { config.set("generatedVideo", sample.video.toString()); config.save() }
+            report("测试视频：${sample.video}；请点探测、转码或播放")
+        }
+    }
+    fun probe() = dispatch { task("探测", { runtime.processing.probe(input()) }) { info -> report("${info.format}；时长=${info.durationSeconds}；流=${info.streams.map { it.type + "/" + it.codec }}") } }
+    fun transcode() = dispatch {
+        val destination = workspace().output("mp4")
+        task("转码", { runtime.processing.transcode(TranscodeOptions(input().toString(), destination.toString(), videoCodec = "mpeg4", extraArguments = listOf("-an"))) }) { report("转码完成：$destination") }
+    }
+    fun slowTranscode() = dispatch {
+        val destination = workspace().output("mp4")
+        task("可取消的实时转码", { runtime.processing.execute(listOf("-re", "-stream_loop", "-1", "-i", input().toString(), "-t", "120", "-an", "-c:v", "mpeg4", destination.toString())) }) { report("实时转码完成：$destination") }
+    }
+    fun cancel() = dispatch { report(if (active?.cancel() == true) "已请求取消；终态由 result 返回" else "没有可取消的任务") }
+    fun play() = dispatch {
+        closePlayer()
+        val path = input()
+        task("创建静音播放器", { runtime.playback.open(PlayerOptions(frameWidth = 640, frameHeight = 360, options = mapOf("audio" to "no", "loop-file" to "inf"))) }) { created ->
+            synchronized(this) { if (stopped) { created.close(); return@task }; player = created }
+            created.load(path.toString()).whenComplete { _, error -> if (error != null) { created.close(); failure(error) } else report("共享帧播放已开始；默认无窗口、无声音，可取帧或主动预览") }
+        }
+    }
+    fun frames() = dispatch {
+        requireNotNull(player) { "先创建播放器" }.frames().use { buffer ->
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+            var frame: MediaBuffer? = null
+            while (frame == null && System.nanoTime() < deadline) { frame = buffer.latest(); if (frame == null) Thread.sleep(20) }
+            val received = requireNotNull(frame) { "尚未收到视频帧" }
+            check(received.bytes.size == received.width * received.height * 4)
+            report("已收到帧：${received.width}×${received.height}；序号=${received.sequence}；字节=${received.bytes.size}")
+        }
+    }
+    fun preview() = dispatch {
+        if (preview != null) { report("预览已打开，请先关闭现有预览"); return@dispatch }
+        val producer = requireNotNull(player) { "先创建播放器" }
+        val frames = producer.frames()
+        val view = ExamplePreview(frames) {
+            synchronized(this) { preview = null; if (player === producer) player = null }
+            runCatching { producer.close() }
+        }
+        synchronized(this) { if (stopped) view.close() else { preview = view; view.show() } }
+    }
+    fun metadata() = dispatch { task("读取标签", { runtime.metadata.read(input()) }) { report("标签字段=${it.fields.keys}；封面=${it.artworkCount}。视频格式不受标签后端支持时会返回错误。") } }
+    fun audio() = dispatch {
+        val existing = capture
+        if (existing != null) existing.features().whenComplete { features, error -> if (error != null) failure(error) else report("采样率=${features.sampleRate}；RMS=${features.rms}；峰值=${features.peak}") }
+        else task("系统回环采集", { runtime.audio.capture() }) { created -> synchronized(this) { if (stopped) created.close() else capture = created }; report("采集已创建；再次点击读取分析。无音频时可能返回 CAPTURE_NOT_READY。") }
+    }
+    fun web() = dispatch {
+        browser?.close(); browser = null
+        task("打开空白网页", { runtime.web.open(WebOptions(profile = "example-smoke")) }) { created -> synchronized(this) { if (stopped) created.close() else browser = created }; report("空白 WebView2 已打开；关闭会话保留 Profile") }
+    }
+    fun render() = dispatch {
+        val raw = workspace().rawFrame()
+        task("创建渲染目标", { runtime.rendering.createTarget(2, 2) }) { target ->
+            target.present(raw).whenComplete { _, error ->
+                try {
+                    if (error != null) failure(error)
+                    else target.frames().use { report("渲染帧已发布：${it.latest()?.bytes?.size} 字节") }
+                } catch (failure: Throwable) { this.failure(failure) } finally { target.close() }
+            }
+        }
+    }
+    private fun closePlayer() { preview?.close(); preview = null; player?.close(); player = null }
+    private fun closeOwnedSessions() {
+        runCatching { closePlayer() }; player = null
+        runCatching { browser?.close() }; browser = null
+        runCatching { capture?.close() }; capture = null
+    }
+    fun closeSessions() = dispatch { closeOwnedSessions(); report("本示例的会话已关闭") }
+    fun directProbe(path: Path) = executor.submit<Int> {
+        runtime.tools.acquire("ffprobe").use { lease ->
+            val process = synchronized(this) {
+                check(!stopped) { "示例已停用" }
+                ProcessBuilder(lease.path.toString(), "-v", "error", "-show_format", path.toString()).redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start().also(directProcesses::add)
+            }
+            try { process.waitFor() } finally { terminateDirect(process); directProcesses.remove(process) }
+        }
+    }
+    private fun terminateDirect(process: Process) {
+        if (!process.isAlive) return
+        process.destroy()
+        if (!process.waitFor(2, TimeUnit.SECONDS)) { process.destroyForcibly(); process.waitFor(2, TimeUnit.SECONDS) }
+    }
+    override fun close() {
+        val view = synchronized(this) { if (stopped) return; stopped = true; preview.also { preview = null } }
+        view?.close()
+        runCatching { active?.cancel() }
+        directProcesses.forEach { runCatching { terminateDirect(it) } }
+        runCatching { player?.close() }; runCatching { browser?.close() }; runCatching { capture?.close() }
+        runCatching { connection?.close() }; connection = null
+        executor.shutdownNow()
+        samples?.close()
+    }
+}

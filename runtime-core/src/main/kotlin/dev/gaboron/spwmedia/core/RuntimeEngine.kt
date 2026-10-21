@@ -73,10 +73,11 @@ class RuntimeEngine(
             "acquireTool" -> {
                 val name = args.text("name"); require(name in setOf("ffmpeg", "ffprobe"))
                 val path = assets.find(name) ?: throw ProviderFailure("DEPENDENCY_MISSING", "Shared $name is unavailable")
+                val external = (assets as? NativeAssets)?.externalTool()
                 val id = registerOwned(request.token, "tools", object : ProviderSession {
                     override fun command(method: String, arguments: JsonObject) = JsonNull
                     override fun state() = obj("state" to "LEASED")
-                    override fun close() {}
+                    override fun close() { external?.close() }
                 })
                 Protocol.json.encodeToJsonElement(ToolDescriptor(id, name, assets.version(name), assets.platform, path.toString()))
             }

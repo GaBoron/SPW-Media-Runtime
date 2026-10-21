@@ -17,6 +17,7 @@
 | LLVM C++ / MinGW 支持运行库 | Zig 0.15.2 所附源码 | LLVM 使用 Apache-2.0 加 LLVM Exception；MinGW 各文件保留原有许可。匹配运行库源码随源码包提供。 |
 | WebView2 SDK | 1.0.3537.50 | Microsoft 再分发条款；仅分发 Loader。Evergreen Runtime 由系统提供。 |
 | nlohmann/json | 3.12.0 | MIT；Windows 辅助程序控制协议。 |
+| OpenJDK JNI 头文件 | jdk-25+36 | GPL-2.0 with Classpath Exception；仅构建 JVM 工作进程启动器，匹配头文件随源码包提供，不分发另一份 JVM。 |
 
 原生准备脚本与两平台交叉构建配方位于 `native/`。Zig 0.15.2、Meson 1.9.2、Ninja 1.13.1、Python、Mako 1.3.10、Vulkan Headers 1.3.296 等缓存到构建目录，不随 Runtime 作为独立运行环境分发。Windows 系统导入库与资源编译器来自已安装的 Windows SDK；辅助程序使用 MSVC。libmpv 的 DLL/SO 仅在独立工作进程加载。
 

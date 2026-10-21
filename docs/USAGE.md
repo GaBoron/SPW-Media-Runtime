@@ -21,6 +21,8 @@ val task = media.processing.transcode(
 
 直接执行时使用 `media.tools.acquire("ffprobe")` 或 `"ffmpeg"`。租约返回版本、平台与绝对路径，运行期间保持租约打开。Linux 的 `bin/lib` 布局保留程序的依赖查找关系，不需要猜测路径。自行创建的进程、管道、退出码、超时和进程树由调用插件管理，不会自动生成 RuntimeTask 或进度事件。
 
+托管失败从 `MediaRuntimeException.detail` 读取稳定错误码；`detail.backend` 可包含退出码和有界脱敏 stderr 尾部，用于向本插件用户解释编码器或输入失败。不要将它复制到公共日志，也不要从后端文本推断任务是否成功。取消和超时的终态不会被迟到的进程结果覆盖。
+
 ## 播放与视频帧
 
 `playback.open(PlayerOptions(...))` 异步创建独立播放器。使用 `load`、`play`、`pause`、`stop`、`seek`、`setSpeed` 和 `setVolume`；时间单位为秒，音量单位为百分比。`command` 与 `setOption` 保留 libmpv 高级能力，选项是否合法由实际 libmpv 版本决定。

@@ -10,6 +10,24 @@ import java.util.concurrent.TimeUnit
 import kotlin.test.*
 
 class SdkConnectionTest {
+    @Test fun connectionCanBeRequestedAfterLateStartupAndRuntimeRestart() = temporaryStorage { storage ->
+        val assets = object : Assets {
+            override val platform = "test"
+            override fun find(name: String): Path? = null
+            override fun version(name: String) = "test"
+        }
+        fun endpoint() = RuntimeEndpoint(RuntimeEngine(emptyList(), assets, storage, emptyMap())) { "sdk-test" }
+        assertEquals("RUNTIME_UNAVAILABLE", assertFailsWith<MediaRuntimeException> { MediaRuntime.connect("sdk-test") }.detail.code)
+        val first = endpoint()
+        val old = MediaRuntime.connect("sdk-test")
+        first.close()
+        assertEquals("RUNTIME_UNAVAILABLE", assertFailsWith<MediaRuntimeException> { old.capabilities() }.detail.code)
+        endpoint().use {
+            assertEquals("CLIENT_CLOSED", assertFailsWith<MediaRuntimeException> { old.capabilities() }.detail.code)
+            runCatching { old.close() }
+            MediaRuntime.connect("sdk-test").use { renewed -> assertTrue(renewed.capabilities().isEmpty()) }
+        }
+    }
     @Test fun clientCompletionAndShutdownUsePublicSdk() {
         val storage = Files.createTempDirectory("spw-media-sdk-regression-")
         val assets = object : Assets {
@@ -39,6 +57,16 @@ class SdkConnectionTest {
                 assertEquals("CLIENT_CLOSED", assertFailsWith<MediaRuntimeException> { client.capabilities() }.detail.code)
             }
         } finally {
+            val helper = System.getProperty("spw.media.recycle.helper")
+            val command = if (System.getProperty("os.name").startsWith("Windows") && helper != null) listOf(helper, storage.toString()) else listOf("gio", "trash", "--", storage.toString())
+            val recycled = runCatching { ProcessBuilder(command).start().waitFor(15, TimeUnit.SECONDS) && !Files.exists(storage) }.getOrDefault(false)
+            if (!recycled) System.err.println("Recycle unavailable; retained test directory: $storage")
+        }
+    }
+
+    private fun temporaryStorage(action: (Path) -> Unit) {
+        val storage = Files.createTempDirectory("spw-media-sdk-reconnect-")
+        try { action(storage) } finally {
             val helper = System.getProperty("spw.media.recycle.helper")
             val command = if (System.getProperty("os.name").startsWith("Windows") && helper != null) listOf(helper, storage.toString()) else listOf("gio", "trash", "--", storage.toString())
             val recycled = runCatching { ProcessBuilder(command).start().waitFor(15, TimeUnit.SECONDS) && !Files.exists(storage) }.getOrDefault(false)

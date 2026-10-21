@@ -1,0 +1,114 @@
+{
+  "configs": [
+    {
+      "title": "SDK 功能示例",
+      "config": "config.json",
+      "preferences": [
+        {
+          "type": "button",
+          "title": "重新连接 Runtime",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.reconnect"
+        },
+        {
+          "key": "input",
+          "type": "edittext",
+          "title": "输入媒体路径",
+          "summary": "留空使用本示例生成的无声测试视频；不会改写输入文件。",
+          "default_value": ""
+        },
+        {
+          "key": "status",
+          "type": "edittext",
+          "title": "最近结果",
+          "summary": "任务完成时写入；可重新打开此页或点击查看状态。",
+          "default_value": "尚未连接"
+        },
+        {
+          "type": "button",
+          "title": "生成测试视频",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.generate"
+        },
+        {
+          "type": "button",
+          "title": "探测媒体",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.probe"
+        },
+        {
+          "type": "button",
+          "title": "普通转码",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.transcode"
+        },
+        {
+          "type": "button",
+          "title": "开始可取消的实时转码",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.slowTranscode"
+        },
+        {
+          "type": "button",
+          "title": "取消本插件任务",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.cancel"
+        },
+        {
+          "type": "button",
+          "title": "创建静音共享帧播放器",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.play"
+        },
+        {
+          "type": "button",
+          "title": "检查视频帧",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.frames"
+        },
+        {
+          "type": "button",
+          "title": "打开视频预览",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.preview"
+        },
+        {
+          "type": "button",
+          "title": "读取标签",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.metadata"
+        },
+        {
+          "type": "button",
+          "title": "创建回环采集 / 读取分析",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.audio"
+        },
+        {
+          "type": "button",
+          "title": "主动打开空白网页",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.web"
+        },
+        {
+          "type": "button",
+          "title": "发布并读取渲染帧",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.render"
+        },
+        {
+          "type": "button",
+          "title": "关闭本插件会话",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.closeSessions"
+        },
+        {
+          "type": "button",
+          "title": "查看状态",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.showStatus"
+        }
+      ]
+    }
+  ]
+}

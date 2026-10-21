@@ -76,6 +76,14 @@ if (!$LinuxOnly) {
     if ($LASTEXITCODE) { throw 'Windows native build failed' }
     & $compiler /nologo /std:c++17 /EHsc /O2 /MT /utf-8 "/Fo$objects/" (Join-Path $PSScriptRoot 'windows/recycle.cpp') "/Fe$(Join-Path $output 'spw-recycle.exe')" /link ole32.lib shell32.lib uuid.lib /SUBSYSTEM:WINDOWS /ENTRY:wmainCRTStartup
     if ($LASTEXITCODE) { throw 'Windows silent recycling helper build failed' }
+    $jni = Join-Path $cacheRoot 'jni-25'
+    New-Item -ItemType Directory -Force -Path $jni | Out-Null
+    foreach ($entry in @(@('share','jni.h'), @('windows','jni_md.h'))) {
+        $source = Get-Asset "https://raw.githubusercontent.com/openjdk/jdk/jdk-25%2B36/src/java.base/$($entry[0])/native/include/$($entry[1])" "jdk25-$($entry[0])-$($entry[1])"
+        Copy-Item -LiteralPath $source -Destination (Join-Path $jni $entry[1]) -Force
+    }
+    & $compiler /nologo /std:c++17 /EHsc /O2 /MT /utf-8 "/I$jni" "/Fo$objects/" (Join-Path $PSScriptRoot 'jvm/launcher.cpp') "/Fe$(Join-Path $output 'spw-jvm-worker.exe')" /link /SUBSYSTEM:WINDOWS /ENTRY:wmainCRTStartup
+    if ($LASTEXITCODE) { throw 'JVM worker bootstrap build failed' }
     . (Join-Path $PSScriptRoot 'python.ps1')
     $python = Find-BuildPython $cacheRoot
     & $python (Join-Path $PSScriptRoot 'windows/build_mpv.py') --cache $cacheRoot --output $outputRoot
@@ -93,6 +101,8 @@ webview2.path=WebView2Loader.dll
 webview2.version=$sdkVersion
 recycle.path=spw-recycle.exe
 recycle.version=$projectVersion
+worker.path=spw-jvm-worker.exe
+worker.version=$projectVersion
 "@ | Set-Content -LiteralPath (Join-Path $output 'assets.properties') -Encoding utf8
 }
 if (!$WindowsOnly) { & (Join-Path $PSScriptRoot 'linux/prepare.ps1') -CacheRoot $cacheRoot -OutputRoot $outputRoot; if (!$?) { throw 'Linux native preparation failed' } }

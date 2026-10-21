@@ -56,10 +56,26 @@ class NativeAssetsTest {
         open().use { active ->
             val generation = active.find("ffmpeg")!!.parent
             var called = false
-            assertEquals("active or unknown lease", inspectCacheGeneration(generation, "0.2.0", true) { called = true })
-            assertEquals("current version", inspectCacheGeneration(generation, dev.gaboron.spwmedia.protocol.BuildInfo.VERSION, true) { called = true })
+            assertEquals("active or unknown lease", inspectCacheGeneration(generation, "0.2.0", true) { called = true; true })
+            assertEquals("current version", inspectCacheGeneration(generation, dev.gaboron.spwmedia.protocol.BuildInfo.VERSION, true) { called = true; true })
             assertFalse(called)
         }
+    }
+    @Test fun unknownCallerOwnedProcessesProtectAnInactiveGeneration() {
+        val active = open()
+        val generation = active.find("ffmpeg")!!.parent
+        val tool = assertNotNull(active.externalTool())
+        active.close()
+        var recycled = false
+        assertEquals("unknown caller-owned tool process", inspectCacheGeneration(generation, "0.2.0", true) { recycled = true; true })
+        assertFalse(recycled)
+        tool.close()
+    }
+    @Test fun failedRecyclingLeavesGenerationEligibleForRetry() {
+        val generation = open().use { it.find("ffmpeg")!!.parent }
+        assertEquals("recycle pending; retained for retry", inspectCacheGeneration(generation, "0.2.0", true) { false })
+        assertTrue(Files.isRegularFile(generation.resolve(".generation")))
+        assertEquals("recycled", inspectCacheGeneration(generation, "0.2.0", true) { true })
     }
     @Test fun incompleteCopyHasNoPublishedEntryAndCanBeRetried() {
         Files.writeString(source.resolve("ffmpeg.exe"), "broken")
@@ -70,4 +86,10 @@ class NativeAssetsTest {
         open().use { assertNotNull(it.find("ffmpeg")) }
     }
     @Test fun traversalIsRejected() { assertFailsWith<IllegalArgumentException> { safeResolve(root, "../caller-data") } }
+    @Test fun closeCannotBeFollowedByALatePreparation() {
+        val active = open()
+        active.close(); active.close()
+        assertFailsWith<IllegalStateException> { active.find("ffmpeg") }
+        assertFalse(Files.exists(cache))
+    }
 }

@@ -1,13 +1,54 @@
 # SDK 接入示例
 
-适用于 Runtime/SDK 0.1.0、SPW Workshop API dev23 与 JDK 25。安装并启用同版本 Runtime 后，运行 `./gradlew.bat examplePlugin`，将 `build/distributions/spw-media-example-0.1.0.spmod` 导入工坊。
+适用于 Runtime/SDK 0.1.0、SPW Workshop API dev23 与 JDK 25。两个插件各自携带轻量 SDK，通过同一个 Runtime 工作，均在工坊的插件配置页提供操作入口。
 
-示例插件启动时仅建立连接，不自动读取或修改媒体。它提供可供自己的菜单、按钮或设置事件调用的方法，不注册演示界面。将源码集成到自己的插件时，依赖配置见 [快速入门](../docs/GETTING_STARTED.md)。
+## 构建与安装
 
-- `MediaExamplePlugin`：连接/停用清理、结构化探测、转码、FFmpeg 高级参数及带租约的 FFprobe 直接执行。`connectionError` 可显示缺少 Runtime 等错误；媒体操作的完成和失败从 `result` 处理，取消使用原任务的 `cancel()`。
-- `CapabilityExamples`：播放、持久化网页 Profile、共享系统音频采集、标签读写和原始帧目标。按平台查询能力后，从用户操作调用，媒体输入和输出路径由用户选择。返回的会话由调用方持有，在视图移除或插件停用时关闭。
-- Compose 展示使用 [MediaSurface 示例](../docs/USAGE.md#播放与视频帧)。先移除组件，再关闭映射和播放器/目标；不要从 UI 线程同步等待任务。
+在仓库根目录运行：
+
+```powershell
+.\gradlew.bat examplePlugin parallelExamplePlugin
+```
+
+将 `build/distributions/` 中的 Runtime、`spw-media-example-<版本>.spmod` 和 `spw-media-parallel-example-<版本>.spmod` 导入工坊。先启用 Runtime，再启用两个示例。
+
+宿主重启时，示例会等待 Runtime 启用，最多 30 秒，以适应插件启动顺序；仍未连接时可点“重新连接 Runtime”。此操作不自动重建媒体会话或重试写操作。
+
+| 插件 | 用途 |
+| --- | --- |
+| SPW Media Example | 探测、转码、取消、静音播放、取帧、主动预览，以及标签、网页、音频和渲染目标调用。 |
+| SPW Media Parallel Example | 独立 Gradle 工程，只引用生成的 Maven SDK；用于第二个插件并发、取消和生命周期隔离验证。 |
+
+独立工程也可以直接引用解压后的 SDK 仓库构建：
+
+```powershell
+.\gradlew.bat -p examples/parallel-consumer -PsdkVersion=0.1.0 -PsdkRepository=<SDK仓库绝对路径> plugin
+```
+
+依赖接入细节见 [快速入门](../docs/GETTING_STARTED.md)。两个包不携带原生媒体组件、宿主 Kotlin 或另一份 Compose/Skia。
+
+## 首次操作
+
+1. 打开任一示例的配置页，留空输入路径，点击“生成测试视频”。默认生成 2 秒无声合成视频，位置显示在最近结果中。
+2. 点击“探测媒体”，确认容器、时长或流信息；点击“普通转码”生成独立输出。输出位于本示例的临时目录，不覆盖输入或现有文件。
+3. 点击“开始可取消的实时转码”，再点“取消本插件任务”。任务应得到 `CANCELLED` 终态，不能在稍后又显示成功。
+4. 点击“创建静音共享帧播放器”，随后取帧。播放器使用共享帧，不自动打开窗口或播放声音。
+5. 在功能示例中主动点击“打开视频预览”显示 `MediaSurface`。关闭预览依次释放显示、读映射和该播放器；再次预览前重新创建播放器。“关闭本插件会话”也可释放未预览的播放器。
+
+启动仅连接和查询能力，不自动处理媒体。任务完成时写入“最近结果”；“查看状态”显示当前结果。最近成功生成的视频路径会保存到本插件配置，重启后输入路径留空仍可使用；临时文件已被系统清理时提示重新生成。生成的媒体与转码结果留在所显示的临时目录，供检查后手动回收。
+
+## 并发与停用
+
+分别在两个示例中生成测试视频并开始转码或播放。取消、关闭或停用其中一个示例后，另一个应能继续完成任务、读取帧和发起探测。再次启用被停用的示例，应建立新连接。
+
+停用 Runtime 时，两个消费者的任务和会话应终止，并得到可处理的连接错误。重新启用 Runtime 后，在示例配置页点“重新连接 Runtime”或重新启用示例；不复用旧令牌或旧播放器。宿主重启后重复首次操作，核对缓存复用与残留映射回收。
+
+## 其他能力与资源约定
+
+标签读取需要填写 jaudiotagger 支持的音频路径；标签写入示例仍在 `CapabilityExamples` 中，仅从明确的用户操作调用。网页按钮主动打开空白 WebView2，关闭会话保留本插件 Profile；不自动访问网站或读写 Cookie。回环采集第一次点击创建会话，后续点击读取 RMS、峰值与采样率，不写出采集音频。
 
 播放与标签支持 Windows/Linux；网页、采集及渲染目标要求 Windows。网页还需系统 Evergreen Runtime，音频采集受设备和权限限制。`capture.features()` 在首个音频块前可能返回 `CAPTURE_NOT_READY`，此时等待后重新查询；失败会话应关闭后重建。切勿记录 Cookie、认证消息或脚本结果。
 
-示例只打包轻量 SDK、协议与必要序列化依赖，不包含媒体二进制、宿主 Kotlin 或另一套 Compose/Skia。直接执行示例由调用方等待进程并处理退出码；托管调用由 Runtime 提供状态与取消。
+`CapabilityExamples` 还保留通用业务调用，`MediaExamplePlugin.directProbe` 展示底层工具租约。直接执行由调用方负责进程、管道、退出码和取消；托管调用从原任务的 `result` 获取成功、失败、取消和超时。不要从 UI 线程等待完成，也不要通过后端文本判断成功。
+
+关闭顺序为显示组件、消费者 `SharedBuffer`、生产会话，最后关闭 `MediaRuntime`。示例使用 [MediaSurface 接口](../docs/USAGE.md#播放与视频帧)，没有更换 Runtime 的渲染路径。构建和包结构检查不能代替 SPW 中的图形、音频及重启验收。

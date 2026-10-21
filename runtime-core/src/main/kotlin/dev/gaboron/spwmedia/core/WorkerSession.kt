@@ -9,9 +9,11 @@ import java.util.concurrent.atomic.AtomicLong
 
 /** Line-delimited correlated control messages; pixel/PCM data is confined to mapped files. */
 internal class WorkerSession(command: List<String>, private val initial: JsonObject, private val backend: String = "native", onSpawn: (Process) -> Unit) : ProviderSession {
-    private val process = ProcessBuilder(command).apply {
+    private val process = try { ProcessBuilder(command).apply {
         if (System.getProperty("os.name").startsWith("Linux")) environment()["LD_LIBRARY_PATH"] = (Path.of(command.last()).parent?.toString() ?: "") + ":" + environment().getOrDefault("LD_LIBRARY_PATH", "")
-    }.start().also { spawned -> try { onSpawn(spawned) } catch (error: Throwable) { ManagedProcess.terminate(spawned); throw error } }
+    }.start() } catch (error: java.io.IOException) {
+        throw ProviderFailure("BACKEND_START_FAILED", "Backend process could not be started", backend = BackendFailure(backend, stderrTail = BackendRedaction.tail(error.message.orEmpty(), command)))
+    }.also { spawned -> try { onSpawn(spawned) } catch (error: Throwable) { ManagedProcess.terminate(spawned); throw error } }
     private val writer = process.outputStream.bufferedWriter(Charsets.UTF_8)
     private val pending = ConcurrentHashMap<Long, CompletableFuture<JsonElement>>()
     private val sequence = AtomicLong()

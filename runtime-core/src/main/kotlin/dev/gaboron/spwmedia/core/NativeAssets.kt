@@ -19,6 +19,7 @@ class NativeAssets(private val root: Path, private val cache: Path? = null) : As
         if (Files.isRegularFile(path)) Files.newInputStream(path).use(::load)
     }
     private var prepared: NativeAssetCache? = null
+    private var closed = false
     override fun locate(name: String): Path? {
         val relative = manifest.getProperty("$name.path") ?: return null
         val target = directory.resolve(relative).normalize()
@@ -26,15 +27,17 @@ class NativeAssets(private val root: Path, private val cache: Path? = null) : As
         return target
     }
     @Synchronized override fun find(name: String): Path? {
+        check(!closed) { "Native assets are closed" }
         val target = locate(name) ?: return null
         val pinned = if (cache == null) target else {
             val active = prepared ?: NativeAssetCache(directory, cache.resolve(platform)) { recycle(it, locate("recycle")) }.also { prepared = it }
             active.prepare(name, directory.relativize(target))
         }
-        if (platform == "linux-x64" && name in setOf("ffmpeg", "ffprobe", "platform")) pinned.toFile().setExecutable(true, true)
+        if (platform == "linux-x64" && name in setOf("ffmpeg", "ffprobe", "platform", "worker")) pinned.toFile().setExecutable(true, true)
         return pinned
     }
-    @Synchronized override fun close() { prepared?.close(); prepared = null }
+    @Synchronized override fun close() { if (closed) return; closed = true; prepared?.close(); prepared = null }
     @Synchronized internal fun track(process: Process) { prepared?.track(process) }
+    @Synchronized internal fun externalTool(): AutoCloseable? = prepared?.externalTool()
     override fun version(name: String): String = manifest.getProperty("$name.version", "unknown")
 }

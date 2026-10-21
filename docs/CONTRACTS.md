@@ -26,13 +26,21 @@ SPW 适配通过 PF4J 公开类加载器 URL 与其插件 Manifest 识别调用�
 
 控制请求上限 1 MiB。视频与 PCM 使用共享映射的最新完整块，容量有界，以序列号检查并发写入；读取不到稳定帧时返回 null，不积压旧帧。SDK 返回独立数组，映射由调用方关闭，生产端由会话关闭。
 
-共享程序在 Runtime 数据目录的版本化安装缓存中固定路径，插件更新不会覆盖已经返回的资源路径。直接执行程序的调用方须在进程结束后再释放租约。缓存不依赖系统 PATH，底层动态库不作为 SDK 公共 ABI 暴露，也不承诺卸载已加载 DLL/SO。
+能力查询检查安装资源，不准备原生缓存。实际调用按构建清单准备资源及其关联依赖，同一代次复用公共 DLL/SO；代次由资源内容标识，不使用安装文件的修改时间。准备有锁和完整性检查，全部所需文件就绪后才返回路径，不覆盖既有文件。发现损坏缓存时返回错误，由维护者在停止使用后检查处理。
 
-持久化数据默认位于 Windows `%LOCALAPPDATA%/SPW Media Runtime` 或 Linux `$XDG_DATA_HOME/spw-media-runtime`（缺省 `~/.local/share/spw-media-runtime`）。临时映射释放时优先移入系统回收站；无可用回收机制时保留文件，不永久删除。不要在资源使用期间手工清理数据目录。
+共享程序在 Runtime 数据目录的版本化缓存中固定路径，Runtime 租约和工作进程记录保护活动代次。直接执行程序的调用方须在进程结束后再释放租约；未正常释放的工具租约视为进程归属未知，维护命令保留对应缓存。缓存不依赖系统 PATH，底层动态库不作为 SDK 公共 ABI 暴露，也不承诺卸载已加载 DLL/SO。WebView2 可用性查询可运行短时依赖检查，不启动持续运行的浏览器会话。
+
+播放工作进程由随包的原生启动器通过 JNI 复用宿主 JVM 运行时，不依赖 `java.exe`、系统 Java 或完整 JDK。libmpv 仅在该子进程内加载。
+
+持久化数据默认位于 Windows `%LOCALAPPDATA%/SPW Media Runtime` 或 Linux `$XDG_DATA_HOME/spw-media-runtime`（缺省 `~/.local/share/spw-media-runtime`）。临时映射按运行实例记录归属，关闭后静默移入回收站；失败记录待回收状态。启动时重试确认所属宿主和工作进程已退出的残留，每次处理最多 16 个旧运行目录。无可用回收机制时保留文件，不永久删除。旧版无归属元数据的映射不会自动回收。
+
+Windows 静默回收使用随包提供的辅助程序；Linux 使用系统 `gio trash`，不可用时保留并报告。旧版本原生缓存不在启动时自动清理，显式预览和回收命令见 [贡献指南](../CONTRIBUTING.md#缓存维护)。不要在资源使用期间手工清理数据目录。
 
 ## 错误与诊断
 
 错误包括稳定 `code`、可读消息、插件/操作/会话标识和 `retryable`。不要求解析底层异常文本，也不在普通日志输出媒体 URL 凭据、Cookie、访问令牌或脚本结果。
+
+`RuntimeError.backend` 为可选的所属调用方详情，包含后端名、可用时的退出码和最多 8 KiB UTF-8 的脱敏 `stderrTail`。缺少尾部文本不代表后端成功；错误处理仍以 `code` 为准。失败详情不会进入普通日志或 `diagnostics()`。控制协议仍为 1，旧 SDK 忽略新增字段；各插件继续携带自己版本配套的 SDK 与协议，不要单独替换协议 JAR。
 
 `media.diagnostics()` 返回本插件的近期脱敏故障，包含时间、错误码和关联标识；Runtime 内存历史上限为 256 条，停用后清空。该入口不返回其他插件的诊断，不记录路径、URL、Cookie 或后端输出。
 
@@ -46,7 +54,8 @@ SPW 适配通过 PF4J 公开类加载器 URL 与其插件 Manifest 识别调用�
 | `RESOURCE_LIMIT` | 关闭不用的资源，减少并发，稍后重试。 |
 | `PERMISSION_DENIED` | 核对插件身份、文件权限或系统音频隐私授权。 |
 | `MEDIA_PROCESS_FAILED` / `PLAYBACK_FAILED` | 检查输入媒体、编码器或播放设备；不要盲目重试写操作。 |
-| `BACKEND_EXITED` / `BACKEND_FAILED` / `RENDER_FAILED` | 关闭失败会话，在能力允许时创建新会话。 |
+| `BACKEND_START_FAILED` / `BACKEND_EXITED` / `BACKEND_FAILED` / `BACKEND_TIMEOUT` / `RENDER_FAILED` | 检查完整安装及所属调用方的后端详情；关闭失败会话，在能力允许时创建新会话。 |
+| `SESSION_CLOSED` | 会话已关闭；关闭中的待完成命令也会终止，不再向旧会话提交命令。 |
 | `CAPTURE_NOT_READY` / `CAPTURE_UNAVAILABLE` | 等待首个音频块，或检查默认设备与采集模式。 |
 | `FILE_NOT_FOUND` / `IO_FAILED` / `ARTWORK_NOT_FOUND` | 核对路径、文件状态和封面索引。 |
 | `CANCELLED` / `TIMED_OUT` | 视为终止，检查操作可能已经产生的输出后决定是否重试。 |

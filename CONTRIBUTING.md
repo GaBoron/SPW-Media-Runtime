@@ -67,8 +67,24 @@ JVM 工程使用 Gradle Wrapper 与 JDK 25。完整原生准备入口在 Windows
 
 `nativeSources` 还会收集匹配的媒体依赖源码。FFmpeg 上游源码缓存通过已登录的 GitHub CLI 获取，或由环境变量 `SPW_MEDIA_FFMPEG_SOURCES` 指向已保存的 `cache.tar.gz` ZIP；固定构建记录及本地归档名称见 [第三方组件](third-party/README.md)。离线构建须保留该归档与构建缓存。
 
-`sdkBundle` 将 SDK、协议、Provider 契约及可选 Compose 接入发布到 `build/maven/` 并打包为本地 Maven 仓库；Dokka 的版本对应接口参考生成在各模块的 `build/dokka/html/`。`examplePlugin` 生成可安装示例包。
+`nativeManifest` 在原生准备后生成依赖闭包和资源内容标识。`sdkBundle` 将 SDK、协议、Provider 契约及可选 Compose 接入发布到 `build/maven/` 并打包为本地 Maven 仓库；Dokka 的版本对应接口参考生成在各模块的 `build/dokka/html/`。`examplePlugin` 和 `parallelExamplePlugin` 生成两个可安装示例包；后者是独立 Gradle 工程，只引用本地 Maven 仓库中的公开 SDK。
 
-协议、Core 与 SDK 的关键回归测试保留在对应模块的 `src/test/`，使用 Fake Provider 和可控子进程验证归属、任务终态、取消与清理。运行 `./gradlew.bat :protocol:test :runtime-core:test :sdk:test`；`delivery` 同时执行各模块的 `check`。测试不要求完整原生构建或正在运行的 SPW。
+协议、Core 与 SDK 的关键回归测试保留在对应模块的 `src/test/`，使用 Fake Provider 和可控子进程验证归属、任务终态、取消与清理。运行 `./gradlew.bat :protocol:test :runtime-core:test :sdk:test`；`delivery` 同时执行各模块的 `check`，并通过 `checkPackages` 检查 Runtime 和两个消费者的入口、配置、SDK 副本与宿主依赖边界。回归测试不要求完整原生构建或正在运行的 SPW。
 
 临时媒体、一次性夹具和详细验证报告放在仓库外或忽略目录；清理时移入系统回收站，不永久删除。Examples 是公开接入文档的一部分，随实现保留并编译。自动检查与真实宿主验收分别进行，不以测试或构建通过代替宿主功能验收。
+
+## 缓存维护
+
+使用当前源码对应版本的维护命令。默认仅预览，不回收文件：
+
+```powershell
+.\gradlew.bat cacheCleanup
+```
+
+从预览选择一个完整代次标识后，显式回收：
+
+```powershell
+.\gradlew.bat cacheCleanup -PcacheGeneration=<完整代次标识> -PapplyCleanup=true
+```
+
+可用 `-PruntimeDataDir=<目录>` 指定数据目录。当前构建版本、活动租约、仍存活的工作进程或归属不明的目录均跳过。Windows 使用构建目录中的静默回收辅助程序，Linux 需要 `gio trash`；回收失败保留原路径，不降级为永久删除。旧版没有代次元数据的缓存仅提示保留，须在确认所有宿主与直接调用程序退出后人工检查。

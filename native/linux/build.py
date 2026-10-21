@@ -228,6 +228,12 @@ cpp_link_args = ['-target', 'x86_64-linux-gnu.2.35']
     env['ZIG_GLOBAL_CACHE_DIR'] = str(cache / 'zig-cache')
     env['ZIG_LOCAL_CACHE_DIR'] = str(cache / 'zig-local-cache')
     env['PYTHONPATH'] = str(cache / 'python-packages')
+    jni = cache / 'jni-25'
+    jni.mkdir(exist_ok=True)
+    for platform, name in [('share', 'jni.h'), ('unix', 'jni_md.h')]:
+        source = download(f'https://raw.githubusercontent.com/openjdk/jdk/jdk-25%2B36/src/java.base/{platform}/native/include/{name}', jni / name)
+    launcher = output / 'spw-jvm-worker'
+    run(zig_root / 'zig.exe', 'c++', '-target', 'x86_64-linux-gnu.2.35', '-std=c++17', '-O2', '-I', jni, Path(__file__).parent.parent / 'jvm/launcher.cpp', '-ldl', '-o', launcher, env=env)
     def setup(name: str, source: Path, flags: list[str]) -> Path:
         if name == 'mpv':
             flags = flags + ['-Dc_link_args=' + json.dumps(['-target', 'x86_64-linux-gnu.2.35', '-Wl,-rpath,$ORIGIN', '-lc++'])]
@@ -268,7 +274,7 @@ cpp_link_args = ['-target', 'x86_64-linux-gnu.2.35']
     relocate(output / 'libmpv.so.2')
     system = {'libc.so.6', 'libm.so.6', 'libmvec.so.1', 'libresolv.so.2', 'libpthread.so.0', 'librt.so.1', 'libdl.so.2', 'ld-linux-x86-64.so.2'}
     selected = set()
-    pending = ['ffmpeg', 'ffprobe', 'libmpv.so.2']
+    pending = ['ffmpeg', 'ffprobe', 'libmpv.so.2', 'spw-jvm-worker']
     reports = []
     while pending:
         name = pending.pop()
@@ -288,7 +294,7 @@ cpp_link_args = ['-target', 'x86_64-linux-gnu.2.35']
         pending.extend(report['needed'])
     package_files = ['assets.properties', 'asset-manifest.properties', 'sysroot-provenance.json', 'elf-dependencies.json', 'packaged-files.txt']
     for name in sorted(selected):
-        directory = output / ('bin' if name in ('ffmpeg', 'ffprobe') else 'lib')
+        directory = output / ('bin' if name in ('ffmpeg', 'ffprobe', 'spw-jvm-worker') else 'lib')
         directory.mkdir(exist_ok=True)
         shutil.copyfile(output / name, directory / name)
         package_files.append(directory.name + '/' + name)
@@ -301,7 +307,8 @@ cpp_link_args = ['-target', 'x86_64-linux-gnu.2.35']
         package_files.append('licenses/' + source.name)
     (output / 'packaged-files.txt').write_text('\n'.join(package_files))
     (output / 'elf-dependencies.json').write_text(json.dumps(reports, indent=2))
-    (output / 'assets.properties').write_text('ffmpeg.path=bin/ffmpeg\nffmpeg.version=8.1.3-18-g46d899d7a0\nffprobe.path=bin/ffprobe\nffprobe.version=8.1.3-18-g46d899d7a0\nmpv.path=lib/libmpv.so.2\nmpv.version=0.41.0\n')
+    version = next(line.split('=', 1)[1] for line in (Path(__file__).parent.parent.parent / 'gradle.properties').read_text().splitlines() if line.startswith('version='))
+    (output / 'assets.properties').write_text('ffmpeg.path=bin/ffmpeg\nffmpeg.version=8.1.3-18-g46d899d7a0\nffprobe.path=bin/ffprobe\nffprobe.version=8.1.3-18-g46d899d7a0\nmpv.path=lib/libmpv.so.2\nmpv.version=0.41.0\nworker.path=bin/spw-jvm-worker\nworker.version=' + version + '\n')
     (output / 'sysroot-provenance.json').write_text(json.dumps(provenance, indent=2))
 
 

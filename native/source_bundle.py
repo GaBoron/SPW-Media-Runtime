@@ -33,6 +33,9 @@ def main(root):
     destination = root / 'build/native-sources'
     destination.mkdir(parents=True, exist_ok=True)
     sources = [
+        ('jdk25-share-jni.h', 'https://raw.githubusercontent.com/openjdk/jdk/jdk-25%2B36/src/java.base/share/native/include/jni.h'),
+        ('jdk25-windows-jni_md.h', 'https://raw.githubusercontent.com/openjdk/jdk/jdk-25%2B36/src/java.base/windows/native/include/jni_md.h'),
+        ('jdk25-unix-jni_md.h', 'https://raw.githubusercontent.com/openjdk/jdk/jdk-25%2B36/src/java.base/unix/native/include/jni_md.h'),
         ('ffmpeg-46d899d7a0.tar.gz', 'https://github.com/FFmpeg/FFmpeg/archive/46d899d7a0.tar.gz'),
         ('mpv-0.41.0.tar.gz', 'https://github.com/mpv-player/mpv/archive/refs/tags/v0.41.0.tar.gz'),
         ('libplacebo-6.338.2.tar.gz', 'https://github.com/haasn/libplacebo/archive/refs/tags/v6.338.2.tar.gz'),
