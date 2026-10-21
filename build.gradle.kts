@@ -125,6 +125,12 @@ val exampleClasspath = configurations.create("exampleRuntime") {
     isCanBeConsumed = false
     attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
 }
+val maintenanceClasspath = configurations.create("maintenanceRuntime") {
+    isCanBeConsumed = false
+    attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
+}
+dependencies.add(maintenanceClasspath.name, project(":runtime-core"))
+dependencies.add(maintenanceClasspath.name, "org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
 dependencies.add(exampleClasspath.name, project(":sdk"))
 dependencies.add(exampleClasspath.name, project(":sdk-compose"))
 tasks.register<Exec>("prepareNative") {
@@ -157,7 +163,7 @@ tasks.register<Exec>("nativeManifest") {
 }
 tasks.register<JavaExec>("cacheCleanup") {
     dependsOn(":runtime-core:classes")
-    classpath = project(":runtime-core").extensions.getByType<SourceSetContainer>()["main"].runtimeClasspath + configurations.detachedConfiguration(dependencies.create("org.jetbrains.kotlin:kotlin-stdlib:2.4.20"))
+    classpath = maintenanceClasspath
     mainClass.set("dev.gaboron.spwmedia.core.CacheCleanupKt")
     systemProperty("spw.media.recycle.helper", file("build/native/windows-x64/spw-recycle.exe").absolutePath)
     javaLauncher.set(project(":runtime-core").extensions.getByType<JavaToolchainService>().launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
