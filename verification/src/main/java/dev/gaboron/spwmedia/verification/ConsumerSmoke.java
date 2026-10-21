@@ -14,59 +14,45 @@ public final class ConsumerSmoke {
         require(temporary.getFileName().toString().startsWith("consumer-smoke-"), "A dedicated verification temporary root is required");
         boolean completed = false;
         Path invalid = Files.writeString(temporary.resolve("invalid.mp4"), "invalid media");
+        Path fixture = Path.of(args[2]);
         try (var runtime = new PackagedRuntime(distributions.resolve("spw-media-runtime-" + version + ".spmod"));
-             var first = new ConsumerPlugin(distributions.resolve("spw-media-example-" + version + ".spmod"), "smoke.example", "examples.ExampleOperations", runtime);
-             var second = new ConsumerPlugin(distributions.resolve("spw-media-parallel-example-" + version + ".spmod"), "smoke.parallel", "parallel.ParallelOperations", runtime)) {
-            first.invoke("connect"); second.invoke("connect");
-            first.await(s -> s.text().contains("等待 Runtime")); second.await(s -> s.text().contains("等待 Runtime"));
-            runtime.start();
-            first.await(s -> s.text().contains("已连接") && !s.error()); second.await(s -> s.text().contains("已连接") && !s.error());
+             var first = new ConsumerPlugin(fixture, "smoke.first", runtime);
+             var second = new ConsumerPlugin(fixture, "smoke.second", runtime)) {
+            require(first.sdkType() != second.sdkType(), "Consumers share SDK class identity");
+            require("WAITING".equals(first.state().get("status")), "Expected consumer-first startup");
+            runtime.start(); first.connected(1); second.connected(1);
             runtime.assertQueryHasNoCopies();
-            System.out.println("PASS consumer-first startup, independent SDKs and query zero-copy");
+            System.out.println("PASS consumer-first startup, independent SDK classloaders and query zero-copy");
             for (var consumer : List.of(first, second)) {
-                consumer.invoke("probe");
-                consumer.await(s -> s.error() && s.text().contains("创建演示素材"));
-                consumer.success("generate", value -> value.startsWith("演示视频："));
-                consumer.success("probe", consumer == first ? "时长=" : "格式=");
-                consumer.input(temporary.resolve("missing.mp4").toString());
-                consumer.invoke("probe"); consumer.await(s -> s.error() && s.text().contains("不存在"));
-                consumer.input(invalid.toString());
-                consumer.invoke("probe"); consumer.await(s -> s.error() && s.text().contains("MEDIA_PROCESS_FAILED"));
-                consumer.input("");
+                require(Integer.valueOf(0).equals(consumer.invoke("generate")), "Generation failed");
+                var info = consumer.values("probe", "");
+                require(((Number)info.get("duration")).doubleValue()>0 && ((Number)info.get("streams")).intValue()>0, "Invalid media info");
+                consumer.failure("probe", "MEDIA_PROCESS_FAILED", temporary.resolve("missing.mp4").toString());
+                consumer.failure("probe", "MEDIA_PROCESS_FAILED", invalid.toString());
             }
-            first.success("transcode", "转码完成");
-            first.success("metadata", "SPW Media Example");
-            first.directProbe();
-            if (System.getProperty("os.name").startsWith("Windows")) first.success("render", "16 字节");
-            System.out.println("PASS real example generation, probe, transcode, tags, rendering and error classification");
-            cancel(second, "transcode", "实时转码，可取消：");
-            cancel(first, "slowTranscode", "可取消的实时转码：");
-            first.success("play", "共享帧播放已开始"); second.success("play", "共享帧播放已启动");
-            first.success("frames", "已收到帧"); second.success("frames", "视频帧序号=");
-            first.invoke("slowTranscode"); first.await(s -> s.text().contains("可取消的实时转码："));
-            first.disable();
-            second.success("frames", "视频帧序号="); second.success("probe", "格式=");
-            System.out.println("PASS cancel, repeat close, actual silent players and one-sided disable isolation");
-            runtime.stop();
-            second.invoke("probe"); second.await(s -> s.error() && s.text().contains("RUNTIME_UNAVAILABLE"));
-            runtime.start();
-            second.success("connect", "已连接");
-            first.recreate(); first.success("connect", "已连接");
-            first.success("transcode", "转码完成"); first.success("metadata", "SPW Media Example");
-            second.success("probe", "格式=");
-            second.success("play", "共享帧播放已启动"); second.success("frames", "视频帧序号=");
-            second.success("closeSessions", "会话已关闭");
-            System.out.println("PASS runtime restart, explicit reconnect and persisted generated media after consumer restart");
+            require(Integer.valueOf(0).equals(first.invoke("transcode")), "Transcode failed");
+            require("Fixture".equals(first.invoke("metadata")), "Tag read failed");
+            require(Integer.valueOf(0).equals(first.invoke("directProbe")), "Leased tool failed");
+            if (System.getProperty("os.name").startsWith("Windows")) require(Integer.valueOf(16).equals(first.invoke("render")), "Rendering failed");
+            System.out.println("PASS managed generation, typed probe/transcode, tags, rendering, leased tool and structured errors");
+            for (var consumer : List.of(first, second)) {
+                consumer.invoke("startSlow");
+                require("CANCELLED".equals(consumer.invoke("cancel")), "Cancellation did not reach its terminal result");
+                consumer.invoke("play");
+                var frame = consumer.values("frame");
+                require(((Number)frame.get("bytes")).intValue()==320*180*4 && ((Number)frame.get("sequence")).longValue()>0, "Invalid frame");
+            }
+            first.invoke("startSlow"); first.disable();
+            second.values("frame"); second.values("probe", "");
+            System.out.println("PASS cancellation, repeat close, silent playback and one-sided disable isolation");
+            runtime.stop(); runtime.start(); second.connected(2);
+            require(Integer.valueOf(0).equals(second.invoke("transcode")), "Post-restart transcode failed");
+            second.invoke("play"); second.values("frame"); second.invoke("closeSessions");
+            System.out.println("PASS runtime restart, generation recovery and explicit media reconstruction");
             completed = true;
         } finally {
             try { released(completed); } finally { recycle(temporary); }
         }
-    }
-    private static void cancel(ConsumerPlugin consumer, String operation, String started) throws Exception {
-        consumer.invoke(operation); consumer.await(s -> s.text().contains(started));
-        consumer.invoke("cancel"); consumer.await(s -> s.text().contains("CANCELLED"));
-        Thread.sleep(400);
-        require(consumer.status().text().contains("CANCELLED"), "Cancellation feedback was overwritten: " + consumer.status().text());
     }
     private static void released(boolean verify) throws Exception {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
@@ -87,7 +73,7 @@ public final class ConsumerSmoke {
         }
     }
     private static List<String> mediaThreads() {
-        Set<String> names = Set.of("Media example actions", "Parallel media example", "SPW Media SDK", "SPW Media task", "SPW Media deadline");
+        Set<String> names = Set.of("SPW Media connection", "SPW Media cleanup", "SPW Media SDK", "SPW Media task", "SPW Media deadline");
         return Thread.getAllStackTraces().keySet().stream().filter(Thread::isAlive).map(Thread::getName).filter(names::contains).toList();
     }
     private static void recycle(Path target) throws Exception {

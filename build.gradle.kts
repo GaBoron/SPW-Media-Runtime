@@ -17,7 +17,6 @@ subprojects {
         apply(plugin = "java")
         extensions.configure<JavaPluginExtension> { toolchain.languageVersion.set(JavaLanguageVersion.of(25)) }
         dependencies {
-            "runtimeOnly"(hostApi) { isTransitive = false }
             "runtimeOnly"("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
         }
         return@subprojects
@@ -29,7 +28,10 @@ subprojects {
     extensions.configure<JavaPluginExtension> { withSourcesJar() }
     dependencies {
         "compileOnly"(kotlin("stdlib"))
-        "implementation"("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+        "implementation"("org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.9.0") {
+            exclude(group = "org.jetbrains.kotlin")
+            exclude(group = "org.jetbrains", module = "annotations")
+        }
         "testImplementation"(kotlin("test-junit"))
     }
     tasks.withType<Jar>().configureEach {
@@ -64,7 +66,12 @@ subprojects {
 project(":sdk") { dependencies { "api"(project(":protocol")) } }
 project(":sdk") { dependencies { "testImplementation"(project(":runtime-core")) } }
 project(":protocol") {
-    dependencies { "api"("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0") }
+    dependencies {
+        "api"("org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.9.0") {
+            exclude(group = "org.jetbrains.kotlin")
+            exclude(group = "org.jetbrains", module = "annotations")
+        }
+    }
     val generated = layout.buildDirectory.dir("generated/version")
     val generateVersion = tasks.register("generateVersion") {
         inputs.property("version", project.version.toString())
@@ -114,17 +121,6 @@ project(":sdk-compose") {
         "compileOnly"("org.jetbrains.compose.desktop:desktop:1.12.1")
     }
 }
-project(":examples") {
-    apply(plugin = "org.jetbrains.kotlin.plugin.compose")
-    apply(plugin = "org.jetbrains.compose")
-    dependencies {
-        "implementation"(project(":sdk"))
-        "implementation"(project(":sdk-compose"))
-        "compileOnly"("org.jetbrains.compose.desktop:desktop:1.12.1")
-        "compileOnly"(hostApi) { isTransitive = false }
-        "compileOnly"("org.pf4j:pf4j:3.12.0")
-    }
-}
 
 val runtimeClasspath = configurations.create("deliveryRuntime") {
     isCanBeConsumed = false
@@ -132,18 +128,12 @@ val runtimeClasspath = configurations.create("deliveryRuntime") {
 }
 dependencies.add(runtimeClasspath.name, project(":spw-adapter"))
 dependencies.add(runtimeClasspath.name, "org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
-val exampleClasspath = configurations.create("exampleRuntime") {
-    isCanBeConsumed = false
-    attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
-}
 val maintenanceClasspath = configurations.create("maintenanceRuntime") {
     isCanBeConsumed = false
     attributes.attribute(Usage.USAGE_ATTRIBUTE, objects.named(Usage.JAVA_RUNTIME))
 }
 dependencies.add(maintenanceClasspath.name, project(":runtime-core"))
 dependencies.add(maintenanceClasspath.name, "org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
-dependencies.add(exampleClasspath.name, project(":sdk"))
-dependencies.add(exampleClasspath.name, project(":sdk-compose"))
 tasks.register<Exec>("prepareNative") {
     commandLine("pwsh", "-NoProfile", "-File", "native/prepare.ps1")
 }
@@ -184,11 +174,16 @@ tasks.register<Zip>("sdkBundle") {
     dependsOn(subprojects.filter { it.name in setOf("protocol", "sdk", "sdk-compose", "provider-api") }.map { "${it.path}:publishAllPublicationsToDeliveryRepository" })
     archiveFileName.set("spw-media-sdk-${project.version}.zip")
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
-    from(layout.buildDirectory.dir("maven"))
+    from(layout.buildDirectory.dir("maven")) {
+        listOf("sdk", "sdk-compose", "protocol", "provider-api").forEach { module ->
+            val artifact = "${project.group.toString().replace('.', '/')}/spw-media-$module"
+            include("$artifact/${project.version}/**", "$artifact/maven-metadata.xml*")
+        }
+    }
 }
 tasks.register("delivery") {
     dependsOn(subprojects.filter { it.path != ":providers" }.map { "${it.path}:check" })
-    dependsOn("plugin", "sdkBundle", "apiBundle", "nativeSources", "examplePlugin", "parallelExamplePlugin", ":examples:classes")
+    dependsOn("plugin", "sdkBundle", "apiBundle", "nativeSources", "checkExample")
 }
 tasks.register<Zip>("apiBundle") {
     listOf("sdk", "sdk-compose", "protocol", "provider-api").forEach { module ->
@@ -210,29 +205,6 @@ tasks.register<Copy>("stageJvm") {
     from(project(":spw-adapter").tasks.named("jar"))
     from(configurations.detachedConfiguration(dependencies.create("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")))
 }
-project(":examples").tasks.named<Jar>("jar") {
-    manifest.attributes(mapOf("Plugin-Id" to "spw-media-example", "Plugin-Class" to "dev.gaboron.spwmedia.examples.MediaExamplePlugin", "Plugin-Version" to project.version, "Plugin-Provider" to "GaBoron", "Plugin-Name" to "SPW Media Example", "Plugin-Has-Config" to "true"))
-}
-tasks.register<Zip>("examplePlugin") {
-    dependsOn(":examples:jar", ":sdk:jar", ":protocol:jar")
-    archiveFileName.set("spw-media-example-${project.version}.spmod")
-    destinationDirectory.set(layout.buildDirectory.dir("distributions"))
-    into("classes") { from(project(":examples").tasks.named<Jar>("jar").map { zipTree(it.archiveFile) }) }
-    into("lib") {
-        from(project(":sdk").tasks.named("jar")); from(project(":protocol").tasks.named("jar"))
-        from(exampleClasspath)
-        exclude("kotlin-stdlib-*.jar", "annotations-*.jar")
-    }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-}
-tasks.register<GradleBuild>("parallelExamplePlugin") {
-    dependsOn("sdkBundle")
-    dir = file("examples/parallel-consumer")
-    tasks = listOf("plugin")
-    startParameter.projectProperties = mapOf("sdkRepository" to file("build/maven").toURI().toString(), "sdkVersion" to project.version.toString(), "outputDir" to file("build/distributions").absolutePath)
-    startParameter.systemPropertiesArgs = gradle.startParameter.systemPropertiesArgs
-    startParameter.setOffline(gradle.startParameter.isOffline)
-}
-
+apply(from = "gradle/consumer-builds.gradle.kts")
 apply(from = "gradle/package-checks.gradle.kts")
 apply(from = "gradle/consumer-smoke.gradle.kts")

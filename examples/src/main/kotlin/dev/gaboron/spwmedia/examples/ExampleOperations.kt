@@ -12,9 +12,8 @@ data class ActionStatus(val text: String, val isError: Boolean = false)
 /** Public-SDK workflows; all media writes go to an owned temporary directory. */
 class ExampleOperations(private val pluginId: String, private val config: ConfigHelper) : AutoCloseable {
     private val executor = Executors.newSingleThreadScheduledExecutor { Thread(it, "Media example actions").apply { isDaemon = true } }
-    private var connecting = false
     @Volatile private var stopped = false
-    @Volatile private var connection: MediaRuntime? = null
+    @Volatile private var connection: ExampleConnection? = null
     @Volatile private var active: RuntimeTask<*>? = null
     @Volatile private var player: Player? = null
     @Volatile private var browser: Browser? = null
@@ -27,33 +26,24 @@ class ExampleOperations(private val pluginId: String, private val config: Config
     val status get() = result.text
     @Volatile var connectionError: String? = null
         private set
-    val runtime: MediaRuntime get() = connection ?: error("请启用 Runtime，再在「连接与会话」中点击「重新连接 Runtime」")
+    val runtime: MediaRuntime get() = connection?.current ?: error("请启用 Runtime，再在「连接与会话」中点击「重新连接 Runtime」")
     fun connect() = dispatch {
-        if (connecting) return@dispatch
-        connection?.let { existing ->
-            if (runCatching { existing.capabilities() }.isSuccess) { report("已连接 Runtime"); return@dispatch }
+        val existing = connection
+        if (existing != null) existing.reconnect()
+        else connection = ExampleConnection(pluginId, {
             closeOwnedSessions()
-            runCatching { active?.cancel() }; active = null
-            runCatching { existing.close() }; connection = null
-        }
-        connecting = true
-        connectAttempt(0)
-    }
-    private fun connectAttempt(attempt: Int) {
-        if (stopped) return
-        try {
-            val client = MediaRuntime.connect(pluginId)
-            synchronized(this) { if (stopped) { client.close(); return }; connection = client }
-            connectionError = null
-            connecting = false
-            report("已连接；能力：" + client.capabilities().filter { it.available }.joinToString { it.id })
-        } catch (error: Throwable) {
-            connectionError = (error as? MediaRuntimeException)?.detail?.code ?: "CONNECTION_FAILED"
-            if (connectionError == "RUNTIME_UNAVAILABLE" && attempt < 29 && !stopped) {
-                report("等待 Runtime 启用（${attempt + 1}/30）")
-                try { executor.schedule({ connectAttempt(attempt + 1) }, 1, TimeUnit.SECONDS) }
-                catch (_: RejectedExecutionException) { connecting = false }
-            } else { connecting = false; failure(error) }
+            directProcesses.forEach { terminateDirect(it) }
+            active = null
+        }) { state ->
+            if (!stopped) {
+                connectionError = state.error?.code
+                report(when (state.status) {
+                    ConnectionStatus.CONNECTED -> "已连接 Runtime；连接代次=${state.generation}，请按需创建媒体会话"
+                    ConnectionStatus.WAITING -> "等待 Runtime 启用或连接清理"
+                    ConnectionStatus.UNAVAILABLE -> "${state.error?.code}：${state.error?.message}；可显式重连"
+                    ConnectionStatus.CLOSED -> "连接已关闭"
+                }, state.status == ConnectionStatus.UNAVAILABLE)
+            }
         }
     }
     @Synchronized private fun report(value: String, isError: Boolean = false) {
@@ -63,7 +53,7 @@ class ExampleOperations(private val pluginId: String, private val config: Config
     private fun failure(error: Throwable) {
         var cause = error
         while (cause is CompletionException || cause is ExecutionException) cause = cause.cause ?: break
-        val detail = (cause as? MediaRuntimeException)?.detail
+        val detail = MediaRuntimeException.unwrap(cause)?.detail
         report(if (detail == null) "操作失败：${cause.message ?: cause.javaClass.simpleName}" else "${detail.code}: ${detail.message}" + (detail.backend?.let { "\n${it.backend} exit=${it.exitCode}\n${it.stderrTail.takeLast(1800)}" } ?: ""), isError = true)
     }
     private fun dispatch(action: () -> Unit) {
@@ -83,9 +73,11 @@ class ExampleOperations(private val pluginId: String, private val config: Config
     private fun workspace() = samples ?: ExampleSamples().also { samples = it }
     private fun <T> task(label: String, create: () -> RuntimeTask<T>, complete: (T) -> Unit = { report("$label：完成") }) {
         check(active == null) { "已有任务，请先取消或等待完成" }
+        val generation = connection?.generation
         val submitted = create(); active = submitted; report("$label：${submitted.id}")
         submitted.result.whenComplete { value, error ->
             synchronized(this) { if (active === submitted) active = null }
+            if (stopped || connection?.generation != generation) { (value as? AutoCloseable)?.close(); return@whenComplete }
             if (error != null) failure(error) else try { complete(value) } catch (failure: Throwable) { this.failure(failure) }
         }
     }
@@ -164,24 +156,32 @@ class ExampleOperations(private val pluginId: String, private val config: Config
     }
     private fun closePlayer() { preview?.close(); preview = null; player?.close(); player = null }
     private fun closeOwnedSessions() {
-        runCatching { closePlayer() }; player = null
-        runCatching { browser?.close() }; browser = null
-        runCatching { capture?.close() }; capture = null
+        var failure: Throwable? = null
+        listOf<() -> Unit>({ closePlayer() }, { browser?.close(); browser = null }, { capture?.close(); capture = null }).forEach { close ->
+            try { close() } catch (error: Throwable) { if (failure == null) failure = error else failure.addSuppressed(error) }
+        }
+        failure?.let { throw it }
     }
     fun closeSessions() = dispatch { closeOwnedSessions(); report("本示例的会话已关闭") }
     fun directProbe(path: Path) = executor.submit<Int> {
-        runtime.tools.acquire("ffprobe").use { lease ->
-            val process = synchronized(this) {
+        val lease = runtime.tools.acquire("ffprobe")
+        var process: Process? = null
+        try {
+            process = synchronized(this) {
                 check(!stopped) { "示例已停用" }
                 ProcessBuilder(lease.path.toString(), "-v", "error", "-show_format", path.toString()).redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start().also(directProcesses::add)
             }
-            try { process.waitFor() } finally { terminateDirect(process); directProcesses.remove(process) }
+            process.waitFor()
+        } finally {
+            process?.let { terminateDirect(it); directProcesses.remove(it) }
+            // If termination throws, keep the lease registered: recovery must abandon its pin conservatively.
+            lease.close()
         }
     }
     private fun terminateDirect(process: Process) {
         if (!process.isAlive) return
         process.destroy()
-        if (!process.waitFor(2, TimeUnit.SECONDS)) { process.destroyForcibly(); process.waitFor(2, TimeUnit.SECONDS) }
+        if (!process.waitFor(2, TimeUnit.SECONDS)) { process.destroyForcibly(); check(process.waitFor(2, TimeUnit.SECONDS)) { "自有进程未退出，保留工具租约" } }
     }
     override fun close() {
         val view = synchronized(this) { if (stopped) return; stopped = true; preview.also { preview = null } }
@@ -189,8 +189,7 @@ class ExampleOperations(private val pluginId: String, private val config: Config
         runCatching { active?.cancel() }
         directProcesses.forEach { runCatching { terminateDirect(it) } }
         runCatching { player?.close() }; runCatching { browser?.close() }; runCatching { capture?.close() }
-        runCatching { connection?.close() }; connection = null
-        executor.shutdownNow()
+        try { connection?.close(); connection = null } finally { executor.shutdownNow() }
         samples?.close()
     }
 }

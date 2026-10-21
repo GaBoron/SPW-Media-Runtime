@@ -58,7 +58,7 @@ class NativeAssetsTest {
         open().use { active ->
             val generation = active.find("ffmpeg")!!.parent
             var called = false
-            assertEquals("active or unknown lease", inspectCacheGeneration(generation, "0.2.0", true) { called = true; true })
+            assertEquals("active or unknown lease", inspectCacheGeneration(generation, "9.9.9", true) { called = true; true })
             assertEquals("current version", inspectCacheGeneration(generation, dev.gaboron.spwmedia.protocol.BuildInfo.VERSION, true) { called = true; true })
             assertFalse(called)
         }
@@ -69,7 +69,7 @@ class NativeAssetsTest {
         val tool = assertNotNull(active.externalTool())
         active.close()
         var recycled = false
-        assertEquals("unknown caller-owned tool process", inspectCacheGeneration(generation, "0.2.0", true) { recycled = true; true })
+        assertEquals("unknown caller-owned tool process", inspectCacheGeneration(generation, "9.9.9", true) { recycled = true; true })
         assertFalse(recycled)
         tool.close()
     }
@@ -86,9 +86,9 @@ class NativeAssetsTest {
     }
     @Test fun failedRecyclingLeavesGenerationEligibleForRetry() {
         val generation = open().use { it.find("ffmpeg")!!.parent }
-        assertEquals("recycle pending; retained for retry", inspectCacheGeneration(generation, "0.2.0", true) { false })
+        assertEquals("recycle pending; retained for retry", inspectCacheGeneration(generation, "9.9.9", true) { false })
         assertTrue(Files.isRegularFile(generation.resolve(".generation")))
-        assertEquals("recycled", inspectCacheGeneration(generation, "0.2.0", true) { true })
+        assertEquals("recycled", inspectCacheGeneration(generation, "9.9.9", true) { true })
     }
     @Test fun incompleteCopyHasNoPublishedEntryAndCanBeRetried() {
         Files.writeString(source.resolve("ffmpeg.exe"), "broken")
