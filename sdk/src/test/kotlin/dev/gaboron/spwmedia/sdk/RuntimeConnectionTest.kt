@@ -51,10 +51,31 @@ class RuntimeConnectionTest {
         val connection = MediaRuntime.connectWhenAvailable("lifecycle", options, Function { held })
         waitUntil { connection.current != null }
         val failure = assertFailsWith<ExecutionException> { connection.reconnect().toCompletableFuture().get(3, TimeUnit.SECONDS) }
-        assertEquals("CLEANUP_FAILED", MediaRuntimeException.unwrap(failure)?.detail?.code)
+        val detail = MediaRuntimeException.unwrap(failure)!!.detail
+        assertEquals("CLEANUP_FAILED", detail.code)
+        assertTrue(detail.message.contains("timed out"))
         assertNull(connection.current)
         assertEquals(1, connection.snapshot.generation)
         held.complete(null)
+        connection.reconnect().toCompletableFuture().get(3, TimeUnit.SECONDS)
+        assertEquals(2, connection.snapshot.generation)
+        connection.close()
+    }
+    @Test fun cleanupFailureReportsItsCauseAndAllowsExplicitRetry() = SdkFixture().use { fixture ->
+        fixture.start()
+        val fail = java.util.concurrent.atomic.AtomicBoolean(true)
+        val failure = java.io.IOException("process shutdown failed")
+        val connection = MediaRuntime.connectWhenAvailable("lifecycle", options, Function {
+            if (fail.compareAndSet(true, false)) CompletableFuture.failedFuture(failure)
+            else CompletableFuture.completedFuture(null)
+        })
+        waitUntil { connection.current != null }
+        val thrown = assertFailsWith<ExecutionException> { connection.reconnect().toCompletableFuture().get(3, TimeUnit.SECONDS) }
+        val error = MediaRuntimeException.unwrap(thrown)!!
+        assertEquals("CLEANUP_FAILED", error.detail.code)
+        assertTrue(error.detail.message.contains("IOException"))
+        assertSame(failure, error.cause)
+        assertEquals(ConnectionStatus.UNAVAILABLE, connection.snapshot.status)
         connection.reconnect().toCompletableFuture().get(3, TimeUnit.SECONDS)
         assertEquals(2, connection.snapshot.generation)
         connection.close()

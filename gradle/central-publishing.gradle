@@ -1,0 +1,98 @@
+import org.gradle.api.publish.maven.tasks.PublishToMavenRepository
+import org.gradle.plugins.signing.Sign
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
+import java.nio.file.Files
+import java.time.Duration
+import java.util.concurrent.TimeUnit
+import javax.xml.parsers.DocumentBuilderFactory
+
+def publicModules = ['protocol', 'sdk', 'sdk-compose', 'provider-api']
+def centralRelease = providers.gradleProperty('centralRelease').orNull == 'true'
+publicModules.each { module ->
+    project(":$module") {
+        apply plugin: 'com.vanniktech.maven.publish.base'
+        def referenceJar = tasks.register('javadocJar', Jar) {
+            dependsOn 'dokkaGenerate'
+            archiveBaseName.set("spw-media-$module")
+            archiveClassifier.set('javadoc')
+            from layout.buildDirectory.dir('dokka/html')
+        }
+        publishing.publications.withType(MavenPublication).configureEach {
+            artifact referenceJar
+            pom {
+                developers { developer { id.set('GaBoron'); name.set('GaBoron'); url.set('https://github.com/GaBoron') } }
+                scm {
+                    url.set('https://github.com/GaBoron/SPW-Media-Runtime')
+                    connection.set('scm:git:https://github.com/GaBoron/SPW-Media-Runtime.git')
+                    developerConnection.set('scm:git:ssh://git@github.com/GaBoron/SPW-Media-Runtime.git')
+                }
+            }
+        }
+        mavenPublishing {
+            coordinates(project.group.toString(), "spw-media-$module", project.version.toString())
+            // 0.37.0 waits for PUBLISHED by default. All modules share one deployment.
+            publishToMavenCentral(true)
+            if (centralRelease) signAllPublications()
+        }
+        tasks.withType(PublishToMavenRepository).configureEach {
+            if (repository.name == 'mavenCentral') {
+                dependsOn ':checkCentralMetadata', ':checkSignedSdkArtifacts'
+                doFirst { if (!centralRelease) throw new GradleException('Central publication requires -PcentralRelease=true; use sdkBundle for offline delivery') }
+            }
+        }
+        tasks.named('prepareMavenCentralPublishing').configure {
+            doFirst {
+                if (!centralRelease) throw new GradleException('Central publication requires -PcentralRelease=true')
+                // Upstream deletes this staging directory: recycle it first or stop before that action.
+                def staging = layout.buildDirectory.dir('publishing/mavenCentral').get().asFile.toPath().toAbsolutePath().normalize()
+                def expected = project.layout.buildDirectory.get().asFile.toPath().toAbsolutePath().normalize().resolve('publishing/mavenCentral')
+                if (staging != expected || !staging.startsWith(rootProject.projectDir.toPath().toAbsolutePath().normalize())) throw new GradleException('Unexpected Central staging target')
+                if (Files.exists(staging)) {
+                    if (staging.toRealPath() != staging) throw new GradleException('Central staging must not redirect outside the build tree')
+                    def helper = rootProject.file('build/native/windows-x64/spw-recycle.exe')
+                    def command = System.getProperty('os.name').startsWith('Windows') ? [helper.absolutePath, staging.toString()] : ['gio', 'trash', '--', staging.toString()]
+                    def process = new ProcessBuilder(command).start()
+                    if (!process.waitFor(30, TimeUnit.SECONDS) || process.exitValue() != 0 || Files.exists(staging)) throw new GradleException("Cannot recycle Central staging; retained $staging")
+                }
+            }
+        }
+        tasks.withType(Sign).configureEach { onlyIf { centralRelease } }
+    }
+}
+tasks.register('checkCentralMetadata') {
+    dependsOn publicModules.collect { ":$it:generatePomFileForLibraryPublication" }
+    doLast {
+        publicModules.each { module ->
+            def pom = project(":$module").layout.buildDirectory.file('publications/library/pom-default.xml').get().asFile
+            def document = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(pom)
+            def value = { tag -> document.getElementsByTagName(tag).item(0)?.textContent ?: '' }
+            if (value('groupId') != rootProject.group.toString() || value('artifactId') != "spw-media-$module" || value('version') != rootProject.version.toString()) throw new GradleException("$module: mismatched publication coordinates")
+            ['name', 'description', 'url', 'licenses', 'developers', 'scm'].each { if (value(it).isBlank()) throw new GradleException("$module: missing POM $it") }
+        }
+    }
+}
+tasks.register('publishSdkToCentral') {
+    group = 'publishing'
+    description = 'Sign, validate and publish the four public Maven modules'
+    dependsOn publicModules.collect { ":$it:publishAndReleaseToMavenCentral" }
+}
+tasks.register('centralDeploymentStatus') {
+    group = 'publishing'
+    description = 'Inspect an existing deployment before retrying an interrupted publication'
+    doLast {
+        def id = providers.gradleProperty('deploymentId').get()
+        if (!(id ==~ /[A-Za-z0-9-]+/)) throw new GradleException('Provide the deploymentId printed by the upload')
+        def username = providers.gradleProperty('mavenCentralUsername').get()
+        def password = providers.gradleProperty('mavenCentralPassword').get()
+        def authorization = Base64.encoder.encodeToString("$username:$password".getBytes('UTF-8'))
+        def request = HttpRequest.newBuilder(URI.create("https://central.sonatype.com/api/v1/publisher/status?id=$id"))
+            .timeout(Duration.ofSeconds(30)).header('Authorization', "Bearer $authorization").POST(HttpRequest.BodyPublishers.noBody()).build()
+        def response = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(15)).build().send(request, HttpResponse.BodyHandlers.ofString())
+        if (response.statusCode() != 200) throw new GradleException("Central status returned HTTP ${response.statusCode()}; no upload was attempted")
+        def match = response.body() =~ /"deploymentState"\s*:\s*"([A-Z_]+)"/
+        if (!match.find()) throw new GradleException('Unrecognized Central status response')
+        logger.lifecycle("Central deployment $id: ${match.group(1)}")
+    }
+}

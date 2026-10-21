@@ -6,6 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.20" apply false
     id("org.jetbrains.compose") version "1.12.1" apply false
     id("org.jetbrains.dokka") version "2.2.0" apply false
+    id("com.vanniktech.maven.publish.base") version "0.37.0" apply false
 }
 
 val hostApi = "com.github.Moriafly.spw-workshop-api:spw-workshop-api:0.1.0-dev23"
@@ -206,5 +207,8 @@ tasks.register<Copy>("stageJvm") {
     from(configurations.detachedConfiguration(dependencies.create("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")))
 }
 apply(from = "gradle/consumer-builds.gradle.kts")
+apply(from = "gradle/central-publishing.gradle")
+apply(from = "gradle/sdk-artifacts.gradle.kts")
+apply(from = "gradle/delivery-assets.gradle.kts")
 apply(from = "gradle/package-checks.gradle.kts")
 apply(from = "gradle/consumer-smoke.gradle.kts")

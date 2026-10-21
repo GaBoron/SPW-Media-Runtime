@@ -11,7 +11,7 @@ class Playback internal constructor(private val client: MediaRuntime) {
 }
 /** Independent player. Playback completion/failure is visible in [snapshot] and [events]. */
 class Player internal constructor(id: String, client: MediaRuntime) : MediaSession(id, "playback", client) {
-    /** Loads a file path or URI; replacing media preserves the player instance. */
+    /** Loads a path/URI, preserving the player. Completion acknowledges the command; observe state/events for media loading or playback failure. */
     fun load(media: String): CompletionStage<JsonElement> = command("loadfile", listOf(media, "replace"))
     /** Resume current media. */
     fun play() = setOption("pause", "no")

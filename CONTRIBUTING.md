@@ -57,7 +57,13 @@ PR 标题应概括实际变更。描述建议涵盖以下信息，并按变更�
 
 ## 构建工程
 
-JVM 工程使用 Gradle Wrapper 与 JDK 25。完整原生准备入口在 Windows x64 上运行，需要 PowerShell 7、Windows SDK 与 MSVC x64；工具缺失时应安装对应开发组件。Linux 工件由便携 Zig、Meson、Ninja 与固定 Ubuntu 22.04 sysroot 交叉构建，不要求安装 WSL。
+JVM 工程使用 Gradle Wrapper 与 JDK 25。修改 SDK、协议或示例时，先运行对应的构建与检查：
+
+```powershell
+.\gradlew.bat checkSdkArtifacts consumerFixture checkExample
+```
+
+这些任务不需要 Central 账号或签名材料，也不准备 Runtime 原生组件。涉及完整 Runtime 交付时，在 Windows x64 上运行以下命令；原生构建需要 PowerShell 7、Windows SDK 与 MSVC x64。Linux 工件由便携 Zig、Meson、Ninja 与固定 Ubuntu 22.04 sysroot 交叉构建，不要求安装 WSL。
 
 ```powershell
 .\gradlew.bat delivery
@@ -67,17 +73,21 @@ JVM 工程使用 Gradle Wrapper 与 JDK 25。完整原生准备入口在 Windows
 
 `nativeSources` 还会收集匹配的媒体依赖源码。FFmpeg 上游源码缓存通过已登录的 GitHub CLI 获取，或由环境变量 `SPW_MEDIA_FFMPEG_SOURCES` 指向已保存的 `cache.tar.gz` ZIP；固定构建记录及本地归档名称见 [第三方组件](third-party/README.md)。离线构建须保留该归档与构建缓存。
 
-`nativeManifest` 在原生准备后生成依赖闭包和资源内容标识。`sdkBundle` 将 SDK、协议、Provider 契约及可选 Compose 接入发布到 `build/maven/` 并打包为本地 Maven 仓库；Dokka 的版本对应接口参考生成在各模块的 `build/dokka/html/`。`examplePlugin` 和 `parallelExamplePlugin` 生成两个可安装示例包；后者是独立 Gradle 工程，只引用本地 Maven 仓库中的公开 SDK。
+`nativeManifest` 生成依赖闭包与内容标识。`sdkBundle` 将当前版本的四个公共模块发布到 `build/maven/` 并生成离线仓库归档；归档不混入旧坐标、旧版本或 Runtime 实现。源码与 Dokka Javadoc 随模块提供，独立接口参考由 `apiBundle` 生成。
 
-协议、Core 与 SDK 的关键回归测试保留在对应模块的 `src/test/`，使用 Fake Provider 和可控子进程验证归属、任务终态、取消与清理。运行 `./gradlew.bat :protocol:test :runtime-core:test :sdk:test`；`delivery` 同时执行各模块的 `check`，并通过 `checkPackages` 检查 Runtime 和两个消费者的入口、配置、SDK 副本与宿主依赖边界。回归测试不要求完整原生构建或正在运行的 SPW。
+`examplePlugin` 调用独立 `examples` 工程，包输出到 `examples/build/distributions/`；`checkExample` 只编译示例。示例面向阅读和手动体验，不承担回归断言，也不进入默认发布资产。
 
-临时媒体、一次性夹具和详细验证报告放在仓库外或忽略目录；清理时移入系统回收站，不永久删除。Examples 是公开接入文档的一部分，随实现保留并编译。自动检查与真实宿主验收分别进行，不以测试或构建通过代替宿主功能验收。
+协议、Core 与 SDK 回归测试位于各自 `src/test/`。运行 `./gradlew.bat :protocol:test :runtime-core:test :sdk:test`，无需运行 SPW 或完整原生构建。`checkSdkArtifacts` 进一步检查四个公共模块的 POM、真实 Sources/Javadoc、SDK 归档及宿主依赖边界；它可独立运行，不要求签名或发布凭据。
 
-准备原生资源后，可单独运行 `./gradlew.bat consumerSmoke`；完整 `delivery` 也执行该检查。独立的 `verification` 模块解包实际交付物，以不同类加载器加载两个示例及各自的 SDK，直接驱动其业务操作入口。它覆盖迟启动、错误状态、媒体生成与处理、取消、共享帧、停用隔离、重连和资源释放；可用 `-PsmokeJavaHome=<宿主运行时目录>` 指定工作进程使用的 JVM。只替代宿主配置存储，不打开预览、网页窗口或音频采集，不输出声音；生成内容使用临时目录并在结束时回收。该检查不能代替真实 SPW 宿主和目视验收。
+准备原生资源后运行 `./gradlew.bat consumerSmoke`。验证器以两个独立类加载器加载专用 Java 消费者及各自的 SDK，直接断言结构化结果、错误码、帧和资源状态；不依赖示例配置页或提示文案。它覆盖迟启动、真实媒体任务、租约工具、取消、静音播放、单方停用隔离、重启恢复和进程线程清理。可用 `"-PsmokeJavaHome=<宿主运行时目录>"` 指定工作进程 JVM；不打开预览、网页或音频采集。`consumerFixture` 只构建独立消费者并验证公共 Maven 依赖，不执行原生媒体。
+
+`delivery` 执行各模块检查、示例编译和原生消费者验证，并在 `build/distributions/` 生成 Runtime、SDK、接口参考及源码归档。修改依赖或打包逻辑时，应检查生成包的组件范围及宿主依赖边界。
+
+涉及图形、音频或插件生命周期的 PR，应说明真实 SPW 中的验证范围；构建和自动检查不能代替这些验收。
 
 ## 缓存维护
 
-使用当前源码对应版本的维护命令。默认仅预览，不回收文件：
+调试原生资源缓存问题时，使用当前源码对应版本的维护命令。默认仅预览，不回收文件：
 
 ```powershell
 .\gradlew.bat cacheCleanup

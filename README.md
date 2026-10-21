@@ -6,18 +6,32 @@
 
 在此基础上，Runtime 提供音视频处理、视频播放、网页嵌入、媒体分析等通用能力，并统一管理按需加载、任务并发及运行状态。
 
-**已提供 0.1.1 预发布版。** 项目仍处于开发阶段；构建验证与实际 SPW 环境中的功能验收是两个独立步骤。
+项目仍处于开发阶段，已发布版本以 [Releases](https://github.com/GaBoron/SPW-Media-Runtime/releases) 为准。
 
 ## 获取与接入
 
-从 [Releases](https://github.com/GaBoron/SPW-Media-Runtime/releases) 获取对应版本的 Runtime、SDK 和接口参考。将 Runtime 导入 SPW 创意工坊并启用，再启动使用它的插件。
+从 [Releases](https://github.com/GaBoron/SPW-Media-Runtime/releases) 获取对应版本的 Runtime 和接口参考。将 Runtime 导入 SPW 创意工坊并启用，再启动使用它的插件。SDK 是轻量编译依赖，不包含 FFmpeg、libmpv 或 Runtime 本体。
 
-本地构建交付物位于 `build/distributions/`，包含通用 Runtime `.spmod`、SDK Maven 仓库归档、接口参考及示例插件；本地源码的支持边界以随附文档为准。
+插件工程使用 Maven Central 中已发布的 SDK 版本。以下示例对应 0.2.0，须在该版本完成发布后使用；离线接入或使用尚未发布的版本时，参见 [快速入门](docs/GETTING_STARTED.md)。
+
+```kotlin
+repositories { mavenCentral() }
+
+val mediaVersion = "0.2.0"
+dependencies {
+    implementation("io.github.gaboron.spwmedia:spw-media-sdk:$mediaVersion")
+    // 需要 Compose 视频帧显示时添加：
+    // implementation("io.github.gaboron.spwmedia:spw-media-sdk-compose:$mediaVersion")
+    compileOnly(kotlin("stdlib")) // Kotlin 由 SPW 宿主提供。
+}
+```
+
+离线环境可使用 Release 中的 SDK Maven 归档。完整调用与预览示例见 [SDK 接入示例](examples/README.md)。
 
 - 插件开发者从 [SDK 快速入门](docs/GETTING_STARTED.md) 开始。
 - 各模块的调用、线程和资源约定见 [使用指南](docs/USAGE.md)。
 - 协议、错误和版本约定见 [接口契约](docs/CONTRACTS.md)。
-- 构建条件与命令见 [贡献指南](CONTRIBUTING.md#构建工程)。
+- 参与本项目开发、提交 PR 的构建和审查要求见 [贡献指南](CONTRIBUTING.md)。
 - 原生组件来源和许可见 [第三方组件](third-party/README.md)。
 
 运行环境为 SPW 1.19.0 或更新的兼容宿主及 JDK 25。Windows 以 x64、Windows 10 22H2 或更新版本为目标；Linux 为 x64、glibc 2.35 或更新版本，播放需要桌面和 ALSA 环境。WebView2 使用系统 Evergreen Runtime，未安装时返回 `DEPENDENCY_MISSING`。
@@ -52,7 +66,7 @@ SPW Media Runtime 的首要目标是消除这类重复依赖。插件通过公�
 | Audio Analysis | 原生音频采集及分析组件 | 实时频谱、波形、响度及其他音频分析 |
 | Media Rendering | Compose / Skia 桥接 | 视频帧交付、图像处理及宿主界面集成 |
 
-上述模块具有独立 Provider 实现。0.1.1 的具体支持边界见下方平台表与使用指南；源码实现和构建成功不代表已经完成真实宿主中的功能验收。
+上述模块具有独立 Provider 实现。对应版本的具体支持边界见下方平台表与使用指南；源码实现和构建成功不代表已经完成真实宿主中的功能验收。
 
 ### Media Processing
 

@@ -14,7 +14,7 @@ class RuntimeTask<T> internal constructor(
     private val publisher = SubmissionPublisher<TaskSnapshot>(executor, 16)
     private var polling: ScheduledFuture<*>? = null
     private val completed = AtomicBoolean()
-    /** Completion of the operation, with structured failures through MediaRuntimeException. Cancelling this future alone does not cancel the backend. */
+    /** Read-only completion with MediaRuntimeException failures. Cancelling a toCompletableFuture view does not change this result or cancel the backend; use cancel(). */
     val result: CompletionStage<T> = completion.minimalCompletionStage()
     /** Bounded best-effort progress events; slow subscribers may lose intermediate progress. Query [snapshot] for current state. */
     val events: Flow.Publisher<TaskSnapshot> get() = publisher

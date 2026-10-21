@@ -21,11 +21,11 @@
 
 原生准备脚本与两平台交叉构建配方位于 `native/`。Zig 0.15.2、Meson 1.9.2、Ninja 1.13.1、Python、Mako 1.3.10、Vulkan Headers 1.3.296 等缓存到构建目录，不随 Runtime 作为独立运行环境分发。Windows 系统导入库与资源编译器来自已安装的 Windows SDK；辅助程序使用 MSVC。libmpv 的 DLL/SO 仅在独立工作进程加载。
 
-`nativeSources` 生成两个配套源码归档：
+与 Runtime 二进制匹配的源码和构建资料可从 [Releases](https://github.com/GaBoron/SPW-Media-Runtime/releases) 获取：
 
-- `spw-media-native-sources-0.1.1.zip`：FFmpeg/mpv 主项目、libplacebo、Windows 字体依赖、固定 Ubuntu 组件源包、编译器运行库源码及本工程构建配方。原始媒体源包未经改写；资源生成、CRT 数学函数选择与配置字符串兼容处理均由构建脚本记录。
-- `spw-media-ffmpeg-dependency-sources-0.1.1.zip`：BtbN 实际构建保存的完整下载缓存，内含 `cache.tar.gz`，提供 FFmpeg 及其构建依赖的匹配输入。固定记录为 [工作流 39420836791](https://github.com/BtbN/FFmpeg-Builds/actions/runs/39420836791)、提交 `63ac3265b0789ea16c7b1f8351cd2ad195a28722`、资源 `12263308818`；与 `autobuild-2026-10-20-13-08` 对应。构建配方也随主源码归档提供。
+- `spw-media-native-sources-<版本>.zip`：FFmpeg/mpv 主项目、libplacebo、Windows 字体依赖、固定 Ubuntu 组件源包、编译器运行库源码及本工程构建配方。原始媒体源包未经改写；资源生成、CRT 数学函数选择与配置字符串兼容处理均由构建脚本记录。
+- FFmpeg 依赖源码分卷 [`.001`](https://github.com/GaBoron/SPW-Media-Runtime/releases/download/v0.1.0/spw-media-ffmpeg-dependency-sources-0.1.0.zip.001)、[`.002`](https://github.com/GaBoron/SPW-Media-Runtime/releases/download/v0.1.0/spw-media-ffmpeg-dependency-sources-0.1.0.zip.002)、[`.003`](https://github.com/GaBoron/SPW-Media-Runtime/releases/download/v0.1.0/spw-media-ffmpeg-dependency-sources-0.1.0.zip.003)：BtbN 实际构建保存的完整下载缓存，内含 `cache.tar.gz`，提供 FFmpeg 及其构建依赖的匹配输入。固定记录为 [工作流 39420836791](https://github.com/BtbN/FFmpeg-Builds/actions/runs/39420836791)、提交 `63ac3265b0789ea16c7b1f8351cd2ad195a28722`、资源 `12263308818`；与 `autobuild-2026-10-20-13-08` 对应。构建配方也随主源码归档提供。
 
 FFmpeg/FFprobe 使用上游的 LGPL shared 二进制，不启用 GPL/nonfree 组件；libmpv 从匹配源码构建。配置及包版权随原生资源保留。许可依据包括 [FFmpeg 说明](https://ffmpeg.org/legal.html) 和 [mpv 0.41.0 Copyright](https://github.com/mpv-player/mpv/blob/v0.41.0/Copyright)。DLL/SO 与可执行程序保持可替换的独立文件；替换时必须保持架构、ABI、许可及依赖兼容。未限制对 LGPL 组件的修改或为调试修改进行逆向工程。
 
-下载链接和 CI 缓存存在上游保留期限，应保留本地二进制缓存与两个匹配源码归档；分发二进制时同时提供这些源码及许可资料，不能用当前 `master` 代替匹配快照。
+当前 FFmpeg 快照对应上述 v0.1.0 依赖源码分卷；本工程原生代码与构建配方使用对应 Runtime 版本的源码归档。下载链接和 CI 缓存存在上游保留期限，应保留本地二进制缓存与匹配源码归档；分发二进制时同时提供这些源码及许可资料，不能用当前 `master` 代替匹配快照。

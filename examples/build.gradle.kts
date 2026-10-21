@@ -39,6 +39,14 @@ tasks.register<Zip>("plugin") {
     from("../LICENSE")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     doLast {
+        val hostArtifacts = configurations.runtimeClasspath.get().resolvedConfiguration.resolvedArtifacts.filter {
+            val id = it.moduleVersion.id
+            id.group == "org.jetbrains.kotlin" || (id.group == "org.jetbrains" && id.name == "annotations") ||
+                id.group.startsWith("org.jetbrains.compose") || id.group.startsWith("androidx.compose") ||
+                id.group == "org.jetbrains.skiko" || id.group == "org.jetbrains.skia" ||
+                id.group == "org.pf4j" || id.group == "com.github.Moriafly.spw-workshop-api"
+        }
+        check(hostArtifacts.isEmpty()) { "Plugin runtime includes host libraries: ${hostArtifacts.map { it.moduleVersion.id }}" }
         ZipFile(archiveFile.get().asFile).use { archive ->
             val names = archive.entries().asSequence().map { it.name }.toList()
             check(names.none { it.startsWith("native/") || it.contains("runtime-core") || it.startsWith("lib/kotlin-stdlib-") || it.startsWith("lib/annotations-") || it.startsWith("lib/skiko-") || it.startsWith("lib/compose-") })

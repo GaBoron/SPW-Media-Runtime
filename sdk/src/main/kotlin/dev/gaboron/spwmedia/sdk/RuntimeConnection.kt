@@ -121,9 +121,9 @@ class RuntimeConnection internal constructor(
                 }, callbacks)
             } catch (error: Throwable) { done.completeExceptionally(error) }
         }
-        done.orTimeout(options.cleanupTimeoutMillis, TimeUnit.MILLISECONDS).whenComplete { _, error ->
+        done.orTimeout(options.cleanupTimeoutMillis, TimeUnit.MILLISECONDS).whenCompleteAsync({ _, error ->
             if (error != null) runCatching { client.abandon() }
-        }
+        }, ForkJoinPool.commonPool())
         return done
     }
 
@@ -137,8 +137,15 @@ class RuntimeConnection internal constructor(
         publisher.offer(snapshot) { _, _ -> false }
     }
     private fun enqueue(action: () -> Unit) { try { scheduler.execute(action) } catch (_: RejectedExecutionException) {} }
-    private fun closedError() = MediaRuntimeException(RuntimeError("CLIENT_CLOSED", "Connection component is closed"))
-    private fun cleanupError(error: Throwable) = MediaRuntimeException(RuntimeError("CLEANUP_FAILED", "Stop caller-owned processes and retry reconnect", retryable = true))
+    private fun closedError() = MediaRuntimeException(RuntimeError("CLIENT_CLOSED", "Connection component is closed", pluginId))
+    private fun cleanupError(error: Throwable): MediaRuntimeException {
+        var cause = error
+        val seen = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Throwable, Boolean>())
+        while ((cause is CompletionException || cause is ExecutionException) && cause.cause != null && seen.add(cause)) cause = cause.cause!!
+        val reason = if (cause is TimeoutException) "Cleanup timed out after ${options.cleanupTimeoutMillis}ms"
+            else "Cleanup failed (${cause.javaClass.simpleName})"
+        return MediaRuntimeException(RuntimeError("CLEANUP_FAILED", "$reason; stop caller-owned processes and retry reconnect", pluginId, retryable = true)).apply { initCause(cause) }
+    }
 
     override fun close() {
         val done = synchronized(lock) {
@@ -150,7 +157,10 @@ class RuntimeConnection internal constructor(
             beginCleanup(cleanupClient)
         }
         try { done.get(options.cleanupTimeoutMillis, TimeUnit.MILLISECONDS) }
-        catch (error: Throwable) { cleanupClient?.abandon(); throw cleanupError(error) }
+        catch (error: Throwable) {
+            cleanupClient?.let { client -> CompletableFuture.runAsync { runCatching { client.abandon() } } }
+            throw cleanupError(error)
+        }
         finally {
             synchronized(lock) { change(ConnectionStatus.CLOSED); publisher.close() }
             scheduler.shutdownNow(); callbacks.shutdownNow()

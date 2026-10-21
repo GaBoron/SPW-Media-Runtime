@@ -12,4 +12,4 @@ fun consumerBuild(name: String, directory: String, requestedTasks: List<String>)
 }
 consumerBuild("checkExample", "examples", listOf("classes"))
 consumerBuild("examplePlugin", "examples", listOf("plugin"))
-consumerBuild("consumerFixture", "verification/consumer-fixture", listOf("fixture"))
+consumerBuild("consumerFixture", "verification/consumer-fixture", listOf("fixture", "checkPublicModules"))
