@@ -1,6 +1,6 @@
 # SDK 接入示例
 
-适用于 Runtime/SDK 0.1.0、SPW Workshop API dev23 与 JDK 25。两个插件各自携带轻量 SDK，通过同一个 Runtime 工作，均在工坊的插件配置页提供操作入口。
+适用于 Runtime/SDK 0.1.1、SPW Workshop API dev23 与 JDK 25。两个插件各自携带轻量 SDK，通过同一个 Runtime 工作，均在工坊的插件配置页提供操作入口。
 
 ## 构建与安装
 
@@ -22,7 +22,7 @@
 独立工程也可以直接引用解压后的 SDK 仓库构建：
 
 ```powershell
-.\gradlew.bat -p examples/parallel-consumer -PsdkVersion=0.1.0 -PsdkRepository=<SDK仓库绝对路径> plugin
+.\gradlew.bat -p examples/parallel-consumer -PsdkVersion=0.1.1 -PsdkRepository=<SDK仓库绝对路径> plugin
 ```
 
 依赖接入细节见 [快速入门](../docs/GETTING_STARTED.md)。两个包不携带原生媒体组件、宿主 Kotlin 或另一份 Compose/Skia。
