@@ -13,6 +13,15 @@ subprojects {
     group = rootProject.group
     version = rootProject.version
     if (path == ":providers") return@subprojects
+    if (path == ":verification") {
+        apply(plugin = "java")
+        extensions.configure<JavaPluginExtension> { toolchain.languageVersion.set(JavaLanguageVersion.of(25)) }
+        dependencies {
+            "runtimeOnly"(hostApi) { isTransitive = false }
+            "runtimeOnly"("org.jetbrains.kotlin:kotlin-stdlib:2.4.20")
+        }
+        return@subprojects
+    }
     apply(plugin = "org.jetbrains.kotlin.jvm")
     apply(plugin = "org.jetbrains.kotlin.plugin.serialization")
     apply(plugin = "java-library")
@@ -224,3 +233,4 @@ tasks.register<GradleBuild>("parallelExamplePlugin") {
 }
 
 apply(from = "gradle/package-checks.gradle.kts")
+apply(from = "gradle/consumer-smoke.gradle.kts")

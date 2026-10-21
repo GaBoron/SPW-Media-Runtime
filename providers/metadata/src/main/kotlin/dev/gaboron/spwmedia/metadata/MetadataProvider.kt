@@ -4,6 +4,7 @@ import dev.gaboron.spwmedia.protocol.*
 import dev.gaboron.spwmedia.provider.*
 import kotlinx.serialization.json.*
 import org.jaudiotagger.audio.AudioFileIO
+import org.jaudiotagger.audio.exceptions.CannotReadException
 import org.jaudiotagger.tag.FieldKey
 import org.jaudiotagger.tag.images.ArtworkFactory
 import java.nio.file.*
@@ -15,7 +16,10 @@ class MetadataProvider : MediaProvider {
     override fun invoke(context: Invocation, operation: String, arguments: JsonObject): JsonElement {
         val path = Path.of(arguments.text("path"))
         return context.withFileLock(path) {
-            val audio = AudioFileIO.read(path.toFile())
+            if (!Files.isRegularFile(path)) throw NoSuchFileException(path.toString())
+            val audio = try { AudioFileIO.read(path.toFile()) } catch (_: CannotReadException) {
+                throw ProviderFailure("METADATA_READ_FAILED", "Metadata backend could not read this audio format or file; check format support and file integrity")
+            }
             val tag = audio.tagOrCreateAndSetDefault
             when (operation) {
                 "read" -> Unit

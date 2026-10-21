@@ -58,6 +58,7 @@ Windows 静默回收使用随包提供的辅助程序；Linux 使用系统 `gio 
 | `SESSION_CLOSED` | 会话已关闭；关闭中的待完成命令也会终止，不再向旧会话提交命令。 |
 | `CAPTURE_NOT_READY` / `CAPTURE_UNAVAILABLE` | 等待首个音频块，或检查默认设备与采集模式。 |
 | `FILE_NOT_FOUND` / `IO_FAILED` / `ARTWORK_NOT_FOUND` | 核对路径、文件状态和封面索引。 |
+| `METADATA_READ_FAILED` | 核对标签后端支持的音频格式与文件完整性；无音轨视频不作为音频标签样本。 |
 | `CANCELLED` / `TIMED_OUT` | 视为终止，检查操作可能已经产生的输出后决定是否重试。 |
 
 0.1.0 为首个开发接口版本，没有旧版迁移要求。新增能力优先注册 Provider，既有操作的语义变化需要同时更新 KDoc、指南和对应示例。

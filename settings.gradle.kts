@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "spw-media-runtime"
-include("protocol", "sdk", "sdk-compose", "provider-api", "runtime-core", "native-worker", "spw-adapter", "examples")
+include("protocol", "sdk", "sdk-compose", "provider-api", "runtime-core", "native-worker", "spw-adapter", "examples", "verification")
 listOf("processing", "playback", "web", "metadata", "audio", "rendering").forEach { include("providers:$it") }

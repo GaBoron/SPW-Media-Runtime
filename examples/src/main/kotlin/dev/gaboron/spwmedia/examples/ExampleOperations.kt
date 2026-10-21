@@ -7,6 +7,8 @@ import dev.gaboron.spwmedia.sdk.*
 import java.nio.file.*
 import java.util.concurrent.*
 
+data class ActionStatus(val text: String, val isError: Boolean = false)
+
 /** Public-SDK workflows; all media writes go to an owned temporary directory. */
 class ExampleOperations(private val pluginId: String, private val config: ConfigHelper) : AutoCloseable {
     private val executor = Executors.newSingleThreadScheduledExecutor { Thread(it, "Media example actions").apply { isDaemon = true } }
@@ -20,8 +22,9 @@ class ExampleOperations(private val pluginId: String, private val config: Config
     @Volatile private var preview: ExamplePreview? = null
     private val directProcesses = ConcurrentHashMap.newKeySet<Process>()
     private var samples: ExampleSamples? = null
-    @Volatile var status = "尚未连接"
+    @Volatile var result = ActionStatus("尚未连接")
         private set
+    val status get() = result.text
     @Volatile var connectionError: String? = null
         private set
     val runtime: MediaRuntime get() = connection ?: error("请先启用 Runtime 并重新启用本示例")
@@ -53,15 +56,15 @@ class ExampleOperations(private val pluginId: String, private val config: Config
             } else { connecting = false; failure(error) }
         }
     }
-    private fun report(value: String) {
-        status = value.take(4096)
+    @Synchronized private fun report(value: String, isError: Boolean = false) {
+        result = ActionStatus(value.take(4096), isError)
         if (!stopped) synchronized(config) { config.set("status", status); config.save() }
     }
     private fun failure(error: Throwable) {
         var cause = error
         while (cause is CompletionException || cause is ExecutionException) cause = cause.cause ?: break
         val detail = (cause as? MediaRuntimeException)?.detail
-        report(if (detail == null) "操作失败：${cause.message ?: cause.javaClass.simpleName}" else "${detail.code}: ${detail.message}" + (detail.backend?.let { "\n${it.backend} exit=${it.exitCode}\n${it.stderrTail.takeLast(1800)}" } ?: ""))
+        report(if (detail == null) "操作失败：${cause.message ?: cause.javaClass.simpleName}" else "${detail.code}: ${detail.message}" + (detail.backend?.let { "\n${it.backend} exit=${it.exitCode}\n${it.stderrTail.takeLast(1800)}" } ?: ""), isError = true)
     }
     private fun dispatch(action: () -> Unit) {
         if (stopped) return
@@ -89,8 +92,8 @@ class ExampleOperations(private val pluginId: String, private val config: Config
     fun generate() = dispatch {
         val sample = workspace()
         task("生成无声测试视频", { runtime.processing.execute(sample.videoArguments()) }) {
-            synchronized(config) { config.set("generatedVideo", sample.video.toString()); config.save() }
-            report("测试视频：${sample.video}；请点探测、转码或播放")
+            synchronized(config) { config.set("generatedVideo", sample.video.toString()); config.set("generatedAudio", sample.audio.toString()); config.save() }
+            report("测试视频：${sample.video}；标签音频：${sample.audio}；可探测、转码、播放或读取标签")
         }
     }
     fun probe() = dispatch { task("探测", { runtime.processing.probe(input()) }) { info -> report("${info.format}；时长=${info.durationSeconds}；流=${info.streams.map { it.type + "/" + it.codec }}") } }
@@ -131,7 +134,13 @@ class ExampleOperations(private val pluginId: String, private val config: Config
         }
         synchronized(this) { if (stopped) view.close() else { preview = view; view.show() } }
     }
-    fun metadata() = dispatch { task("读取标签", { runtime.metadata.read(input()) }) { report("标签字段=${it.fields.keys}；封面=${it.artworkCount}。视频格式不受标签后端支持时会返回错误。") } }
+    fun metadata() = dispatch {
+        config.reload()
+        val path = if (config.get("input", "").isNotBlank()) input() else samples?.audio?.takeIf(Files::isRegularFile)
+            ?: config.get("generatedAudio", "").takeIf { it.isNotBlank() }?.let(Path::of)?.takeIf(Files::isRegularFile)
+            ?: error("请先生成测试视频及标签音频，或填写受支持的音频路径")
+        task("读取标签", { runtime.metadata.read(path) }) { report("标签=${it.fields}；封面=${it.artworkCount}") }
+    }
     fun audio() = dispatch {
         val existing = capture
         if (existing != null) existing.features().whenComplete { features, error -> if (error != null) failure(error) else report("采样率=${features.sampleRate}；RMS=${features.rms}；峰值=${features.peak}") }

@@ -8,6 +8,8 @@ import java.nio.file.*
 import java.util.UUID
 import java.util.concurrent.*
 
+data class ActionStatus(val text: String, val isError: Boolean = false)
+
 /** Deliberately small independent consumer: no Runtime implementation or first-example code. */
 class ParallelOperations(private val pluginId: String, private val config: ConfigHelper) : AutoCloseable {
     private val executor = Executors.newSingleThreadScheduledExecutor { Thread(it, "Parallel media example").apply { isDaemon = true } }
@@ -18,18 +20,19 @@ class ParallelOperations(private val pluginId: String, private val config: Confi
     @Volatile private var player: Player? = null
     private val directory by lazy { Files.createTempDirectory("spw-media-parallel-") }
     private val sample get() = directory.resolve("sample.mp4")
-    @Volatile var status = "尚未连接"
+    @Volatile var result = ActionStatus("尚未连接")
         private set
+    val status get() = result.text
     private val media get() = client ?: error("请启用 Runtime 并重新启用本示例")
-    private fun report(message: String) {
-        status = message.take(4096)
+    @Synchronized private fun report(message: String, isError: Boolean = false) {
+        result = ActionStatus(message.take(4096), isError)
         if (!closed) synchronized(config) { config.set("status", status); config.save() }
     }
     private fun failure(error: Throwable) {
         var cause = error
         while (cause is CompletionException || cause is ExecutionException) cause = cause.cause ?: break
         val detail = (cause as? MediaRuntimeException)?.detail
-        report(if (detail != null) detail.code + ": " + detail.message else cause.message ?: cause.javaClass.simpleName)
+        report(if (detail != null) detail.code + ": " + detail.message else cause.message ?: cause.javaClass.simpleName, isError = true)
     }
     private fun dispatch(action: () -> Unit) {
         if (closed) return
@@ -101,9 +104,15 @@ class ParallelOperations(private val pluginId: String, private val config: Confi
         }
     }
     fun frames() = dispatch {
-        requireNotNull(player) { "先创建播放器" }.frames().use { buffer ->
-            val frame = buffer.latest()
-            report(if (frame == null) "暂无视频帧，可稍后重试" else "视频帧序号=" + frame.sequence + "；字节=" + frame.bytes.size)
+        val producer = requireNotNull(player) { "先创建播放器" }
+        producer.frames().use { buffer ->
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
+            var frame: MediaBuffer? = null
+            while (frame == null && System.nanoTime() < deadline) { frame = buffer.latest(); if (frame == null) Thread.sleep(20) }
+            if (frame == null) producer.snapshot().error?.let { throw MediaRuntimeException(it) }
+            val received = requireNotNull(frame) { "尚未收到视频帧，请稍后重试" }
+            check(received.bytes.size == received.width * received.height * 4)
+            report("视频帧序号=" + received.sequence + "；字节=" + received.bytes.size)
         }
     }
     fun closeSessions() = dispatch { task?.cancel(); player?.close(); player = null; report("本消费者会话已关闭") }

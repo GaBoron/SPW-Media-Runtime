@@ -43,8 +43,8 @@ class MediaExamplePlugin(context: PluginContext) : SpwPlugin(context) {
         @JvmStatic fun render() { current?.operations?.render() }
         @JvmStatic fun closeSessions() { current?.operations?.closeSessions() }
         @JvmStatic fun showStatus() {
-            val message = current?.operations?.status ?: "示例未启用"
-            WorkshopApi.ui.toast(message, if (Regex("FAILED|MISSING|失败|未启用|CLOSED").containsMatchIn(message)) WorkshopApi.Ui.ToastType.Error else WorkshopApi.Ui.ToastType.Success)
+            val result = current?.operations?.result
+            WorkshopApi.ui.toast(result?.text ?: "示例未启用", if (result == null || result.isError) WorkshopApi.Ui.ToastType.Error else WorkshopApi.Ui.ToastType.Success)
         }
     }
 }

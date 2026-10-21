@@ -7,10 +7,13 @@ import java.util.UUID
 class ExampleSamples : AutoCloseable {
     val directory: Path = Files.createTempDirectory("spw-media-example-")
     val video: Path = directory.resolve("sample.mp4")
+    val audio: Path = directory.resolve("sample.flac")
     fun output(extension: String): Path = directory.resolve("${UUID.randomUUID()}.$extension")
     fun videoArguments(): List<String> {
         check(!Files.exists(video)) { "测试视频已存在，请直接使用它" }
-        return listOf("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=15", "-t", "2", "-an", "-c:v", "mpeg4", "-q:v", "5", video.toString())
+        return listOf("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=15", "-f", "lavfi", "-i", "anullsrc=r=48000:cl=mono",
+            "-map", "0:v", "-t", "2", "-an", "-c:v", "mpeg4", "-q:v", "5", video.toString(),
+            "-map", "1:a", "-t", "2", "-vn", "-c:a", "flac", "-metadata", "title=SPW Media Example", audio.toString())
     }
     fun rawFrame(): Path = output("bgra").also { Files.write(it, byteArrayOf(0, 0, -1, -1, 0, -1, 0, -1, -1, 0, 0, -1, -1, -1, -1, -1)) }
     override fun close() {
