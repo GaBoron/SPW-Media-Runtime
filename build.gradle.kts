@@ -38,6 +38,8 @@ subprojects {
     }
     tasks.withType<Test>().configureEach {
         systemProperty("spw.media.recycle.helper", rootProject.file("build/native/windows-x64/spw-recycle.exe").absolutePath)
+        // In delivery builds, do not execute the helper while its linker is replacing it.
+        mustRunAfter(rootProject.tasks.matching { it.name == "prepareNative" })
     }
     if (name in setOf("protocol", "sdk", "sdk-compose", "provider-api")) {
         apply(plugin = "maven-publish")
