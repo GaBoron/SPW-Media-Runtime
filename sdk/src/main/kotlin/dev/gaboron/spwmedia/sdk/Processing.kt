@@ -33,9 +33,9 @@ class Tools internal constructor(private val client: MediaRuntime) {
 }
 /** Pins an immutable component version. Updating the runtime does not replace an active lease's path. */
 class ToolLease internal constructor(val descriptor: ToolDescriptor, private val client: MediaRuntime) : AutoCloseable {
-    private val closed = java.util.concurrent.atomic.AtomicBoolean()
+    private val resource = RemoteResource(descriptor.leaseId, client, 30)
     /** Absolute executable path; no PATH lookup or copying is necessary. */
-    val path: Path get() = Path.of(descriptor.path)
+    val path: Path get() { resource.checkOpen(); return Path.of(descriptor.path) }
     /** Call only after caller-owned processes using this executable have exited. */
-    override fun close() { if (closed.compareAndSet(false, true)) client.closeResource(descriptor.leaseId) }
+    override fun close() = resource.close()
 }

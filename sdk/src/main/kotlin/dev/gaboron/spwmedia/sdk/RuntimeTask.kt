@@ -15,7 +15,7 @@ class RuntimeTask<T> internal constructor(
     private var polling: ScheduledFuture<*>? = null
     private val completed = AtomicBoolean()
     /** Completion of the operation, with structured failures through MediaRuntimeException. Cancelling this future alone does not cancel the backend. */
-    val result: CompletionStage<T> get() = completion
+    val result: CompletionStage<T> = completion.minimalCompletionStage()
     /** Bounded best-effort progress events; slow subscribers may lose intermediate progress. Query [snapshot] for current state. */
     val events: Flow.Publisher<TaskSnapshot> get() = publisher
     /** Obtain an immutable runtime snapshot. */
@@ -45,14 +45,14 @@ class RuntimeTask<T> internal constructor(
 
 /** Owned long-lived resource. Explicit close is required before the connection closes. */
 open class MediaSession internal constructor(val id: String, val capability: String, protected val client: MediaRuntime) : AutoCloseable {
-    private val closed = AtomicBoolean()
+    private val resource = RemoteResource(id, client, 20)
     /** Current session state and structured backend failure. */
-    fun snapshot(): SessionSnapshot = Protocol.json.decodeFromJsonElement(client.exchange("sessionState", payload = obj("id" to id)))
+    fun snapshot(): SessionSnapshot { resource.checkOpen(); return Protocol.json.decodeFromJsonElement(client.exchange("sessionState", payload = obj("id" to id))) }
     /** Poll-backed state events. There is no polling until a subscriber attaches. */
     val events: Flow.Publisher<SessionSnapshot> get() = client.watch(this)
     /** Releases only this session; repeated close is harmless. */
-    override fun close() { if (closed.compareAndSet(false, true)) client.closeResource(id) }
-    internal fun isClosed() = closed.get()
+    override fun close() = resource.close()
+    internal fun isClosed() = resource.isClosed()
 }
 
 internal class SessionEvents(private val session: MediaSession, private val executor: ScheduledExecutorService, private val client: MediaRuntime) : Flow.Publisher<SessionSnapshot> {

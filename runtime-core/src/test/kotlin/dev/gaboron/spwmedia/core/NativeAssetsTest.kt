@@ -1,6 +1,8 @@
 package dev.gaboron.spwmedia.core
 
 import dev.gaboron.spwmedia.provider.ProviderFailure
+import dev.gaboron.spwmedia.protocol.*
+import kotlinx.serialization.json.*
 import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -70,6 +72,17 @@ class NativeAssetsTest {
         assertEquals("unknown caller-owned tool process", inspectCacheGeneration(generation, "0.2.0", true) { recycled = true; true })
         assertFalse(recycled)
         tool.close()
+    }
+    @Test fun runtimeShutdownKeepsUnreleasedExternalToolMarker() {
+        val active = open()
+        val engine = RuntimeEngine(emptyList(), active, temporary.resolve("runtime"), emptyMap())
+        val token = engine.exchange(Request(operation = "connect", payload = obj("pluginId" to "caller")), "caller").value.jsonObject.text("token")
+        val tool = engine.exchange(Request(token = token, operation = "acquireTool", payload = obj("name" to "ffmpeg")), "caller").value.jsonObject
+        val generation = Path.of(tool.text("path")).parent
+        engine.close()
+        var recycled = false
+        assertEquals("unknown caller-owned tool process", inspectCacheGeneration(generation, "9.9.9", true) { recycled = true; true })
+        assertFalse(recycled)
     }
     @Test fun failedRecyclingLeavesGenerationEligibleForRetry() {
         val generation = open().use { it.find("ffmpeg")!!.parent }

@@ -15,10 +15,9 @@ class RuntimeEngine(
     private val workerCommands: Map<String, List<String>>, concurrency: Int = 4,
     private val workerCommand: (String) -> List<String>? = { workerCommands[it] }
 ) : AutoCloseable {
-    private data class Owner(val plugin: String)
-    private data class Resource(val owner: String, val capability: String, val session: ProviderSession)
+    private data class Owner(val plugin: String, @Volatile var closing: Boolean = false)
     private val clients = ConcurrentHashMap<String, Owner>()
-    private val resources = ConcurrentHashMap<String, Resource>()
+    private val resources = ConcurrentHashMap<String, OwnedResource>()
     private val tasks = ConcurrentHashMap<String, TaskRecord>()
     private val fileLocks = Array(128) { ReentrantLock() }
     private val diagnostics = RuntimeDiagnostics()
@@ -34,7 +33,7 @@ class RuntimeEngine(
 
     /** Dispatch a protocol request. Calls only perform bookkeeping; media work is submitted to a bounded queue. */
     fun exchange(request: Request, authenticatedPluginId: String): Response = try {
-        check(!closed)
+        if (closed) throw ProviderFailure("CLIENT_CLOSED", "Runtime is stopped")
         if (request.protocol != Protocol.VERSION) throw ProviderFailure("PROTOCOL_INCOMPATIBLE", "Unsupported protocol version")
         Response(route(request, authenticatedPluginId))
     } catch (error: Throwable) {
@@ -56,6 +55,8 @@ class RuntimeEngine(
         }
         val owner = clients[request.token] ?: throw ProviderFailure("CLIENT_CLOSED", "Unknown or closed connection")
         if (owner.plugin != authenticatedPluginId) throw ProviderFailure("PERMISSION_DENIED", "Connection belongs to another plugin")
+        if (owner.closing && request.operation !in setOf("closeResource", "disconnect", "cancel", "diagnostics"))
+            throw ProviderFailure("CLIENT_CLOSING", "Connection is closing")
         return when (request.operation) {
             "capabilities" -> Protocol.json.encodeToJsonElement(providers.map { it.availability(assets) })
             "diagnostics" -> Protocol.json.encodeToJsonElement(diagnostics.forPlugin(owner.plugin))
@@ -78,7 +79,7 @@ class RuntimeEngine(
                     override fun command(method: String, arguments: JsonObject) = JsonNull
                     override fun state() = obj("state" to "LEASED")
                     override fun close() { external?.close() }
-                })
+                }, onDisconnect = {}) // Unknown caller-owned processes conservatively keep the cache marker.
                 Protocol.json.encodeToJsonElement(ToolDescriptor(id, name, assets.version(name), assets.platform, path.toString()))
             }
             "disconnect" -> { disconnect(request.token); JsonNull }
@@ -130,8 +131,8 @@ class RuntimeEngine(
         override fun register(capability: String, session: ProviderSession): String {
             task.check()
             val id = registerOwned(task.owner, capability, session)
-            task.onCancel { resources.remove(id)?.session?.close() }
-            if (!clients.containsKey(task.owner)) { resources.remove(id)?.session?.close(); throw CancellationException() }
+            task.onCancel { closeResource(task.owner, id) }
+            if (clients[task.owner]?.closing != false) { closeResource(task.owner, id); throw CancellationException() }
             return id
         }
         override fun session(id: String) = ownedResource(task.owner, id).session
@@ -157,28 +158,35 @@ class RuntimeEngine(
         }
     }
 
-    private fun registerOwned(owner: String, capability: String, session: ProviderSession): String = synchronized(resources) {
-        if (!clients.containsKey(owner)) { session.close(); throw ProviderFailure("CLIENT_CLOSED", "Connection closed") }
+    private fun registerOwned(owner: String, capability: String, session: ProviderSession, onDisconnect: () -> Unit = session::close): String = synchronized(resources) {
+        if (clients[owner]?.closing != false) { session.close(); throw ProviderFailure("CLIENT_CLOSED", "Connection closed") }
         if (resources.values.count { it.owner == owner } >= 64) { session.close(); throw ProviderFailure("RESOURCE_LIMIT", "Too many resources") }
-        UUID.randomUUID().toString().also { resources[it] = Resource(owner, capability, session) }
+        UUID.randomUUID().toString().also { resources[it] = OwnedResource(owner, capability, session, onDisconnect) }
     }
 
-    private fun ownedResource(owner: String, id: String): Resource = resources[id]?.takeIf { it.owner == owner } ?: throw ProviderFailure("RESOURCE_NOT_FOUND", "Resource is absent or belongs to another connection")
+    private fun ownedResource(owner: String, id: String): OwnedResource = resources[id]?.takeIf { it.owner == owner } ?: throw ProviderFailure("RESOURCE_NOT_FOUND", "Resource is absent or belongs to another connection")
     private fun ownedTask(owner: String, id: String): TaskRecord = tasks[id]?.takeIf { it.owner == owner } ?: throw ProviderFailure("TASK_NOT_FOUND", "Task is absent or belongs to another connection")
     private fun closeResource(owner: String, id: String) {
         val resource = resources[id] ?: return
         if (resource.owner != owner) throw ProviderFailure("RESOURCE_NOT_FOUND", "Resource belongs to another connection")
-        if (resources.remove(id, resource)) resource.session.close()
+        resource.release(false)
+        resources.remove(id, resource)
     }
     private fun disconnect(token: String) {
-        clients.remove(token)
+        clients[token]?.closing = true
         tasks.values.filter { it.owner == token }.forEach { it.cancel(); tasks.remove(it.id) }
-        resources.entries.filter { it.value.owner == token }.forEach { if (resources.remove(it.key, it.value)) runCatching { it.value.session.close() } }
+        var failure: Throwable? = null
+        resources.entries.filter { it.value.owner == token }.forEach { (id, resource) ->
+            try { resource.release(true); resources.remove(id, resource) }
+            catch (error: Throwable) { diagnostics.record(publicError(error, clients[token]?.plugin.orEmpty(), session = id)); if (failure == null) failure = error }
+        }
+        if (failure != null) throw ProviderFailure("RESOURCE_CLOSE_FAILED", "Resource cleanup failed; retry closing the connection", true)
+        clients.remove(token)
     }
     @Synchronized override fun close() {
-        if (closed) return
+        if (closed && resources.isEmpty()) return
         closed = true
-        clients.keys.toList().forEach(::disconnect)
+        clients.keys.toList().forEach { runCatching { disconnect(it) } }
         providers.forEach { runCatching { it.close() } }
         workers.shutdownNow(); timers.shutdownNow()
         if (buffersUsed) buffers.close()

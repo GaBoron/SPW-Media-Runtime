@@ -17,7 +17,7 @@ class SharedBuffer internal constructor(val descriptor: BufferDescriptor, privat
     private val mapping = FileChannel.open(Path.of(descriptor.path), StandardOpenOption.READ).use {
         it.map(FileChannel.MapMode.READ_ONLY, 0, descriptor.capacity.toLong() + 64, arena).asByteBuffer().order(ByteOrder.LITTLE_ENDIAN)
     }
-    init { client.own(this) }
+    init { client.own(this, 10) }
     /** Copies the latest stable block, or null when no frame exists/the producer is currently writing. No pointer escapes. */
     @Synchronized fun latest(): MediaBuffer? {
         repeat(3) {

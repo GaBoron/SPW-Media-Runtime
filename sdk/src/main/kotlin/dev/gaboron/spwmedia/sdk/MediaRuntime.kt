@@ -9,9 +9,6 @@ import java.util.concurrent.*
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.management.ObjectName
 
-/** A structured runtime failure. [detail] is safe to show; raw backend output is available only to its owner. */
-class MediaRuntimeException(val detail: RuntimeError) : RuntimeException("${detail.code}: ${detail.message}")
-
 /**
  * Plugin-scoped SDK connection. Keep one per plugin and close it from the plugin's stop callback.
  * Methods enqueue work; completion and event delivery occur on SDK background threads, never the UI thread.
@@ -21,10 +18,12 @@ class MediaRuntime private constructor(private val pluginId: String) : AutoClose
     private val server = ManagementFactory.getPlatformMBeanServer()
     private val name = ObjectName(Protocol.OBJECT_NAME)
     private val closed = AtomicBoolean()
+    @Volatile private var closing = false
+    private val closeLock = Any()
     private val executor = Executors.newScheduledThreadPool(2) { r -> Thread(r, "SPW Media SDK").apply { isDaemon = true } }
     private var token = ""
     private val active = ConcurrentHashMap.newKeySet<RuntimeTask<*>>()
-    private val localResources = ConcurrentHashMap.newKeySet<AutoCloseable>()
+    private val localResources = RuntimeResources()
     /** Common and advanced managed FFmpeg operations. */
     val processing = Processing(this)
     /** Independent libmpv player sessions. */
@@ -56,6 +55,8 @@ class MediaRuntime private constructor(private val pluginId: String) : AutoClose
 
     internal fun exchange(operation: String, capability: String = "", payload: JsonObject = obj()): JsonElement {
         if (closed.get()) throw MediaRuntimeException(RuntimeError("CLIENT_CLOSED", "Connection is closed", pluginId))
+        if (closing && operation !in setOf("closeResource", "disconnect", "cancel"))
+            throw MediaRuntimeException(RuntimeError("CLIENT_CLOSING", "Connection is closing; retry close()", pluginId))
         try {
             if (!server.isRegistered(name)) throw MediaRuntimeException(RuntimeError("RUNTIME_UNAVAILABLE", "Enable SPW Media Runtime before connecting", pluginId, retryable = true))
             val raw = server.invoke(name, "exchange", arrayOf(Protocol.json.encodeToString(Request(token = token, operation = operation, capability = capability, payload = payload))), arrayOf("java.lang.String")) as String
@@ -72,30 +73,54 @@ class MediaRuntime private constructor(private val pluginId: String) : AutoClose
         return RuntimeTask(id, this, executor, decode) { active.remove(it) }.also { active.add(it); it.start() }
     }
 
-    internal fun sessionTask(capability: String, id: String, method: String, arguments: JsonObject = obj()): CompletionStage<JsonElement> =
-        task(capability, "session", obj("id" to id, "method" to method, "arguments" to arguments), decode = { it }).result
+    internal fun sessionTask(capability: String, id: String, method: String, arguments: JsonObject = obj()): CompletionStage<JsonElement> {
+        localResources.checkSession(id)
+        return task(capability, "session", obj("id" to id, "method" to method, "arguments" to arguments), decode = { it }).result
+    }
 
     internal fun watch(session: MediaSession): Flow.Publisher<SessionSnapshot> = SessionEvents(session, executor, this)
-    @Synchronized internal fun own(resource: AutoCloseable) {
-        if (closed.get()) { resource.close(); throw MediaRuntimeException(RuntimeError("CLIENT_CLOSED", "Connection is closed", pluginId)) }
-        localResources.add(resource)
+    @Synchronized internal fun own(resource: AutoCloseable, order: Int = 0) {
+        if (closed.get() || closing) { resource.close(); throw MediaRuntimeException(RuntimeError("CLIENT_CLOSED", "Connection is closed", pluginId)) }
+        localResources.add(resource, order)
     }
     internal fun forget(resource: AutoCloseable) { localResources.remove(resource) }
-    @Synchronized internal fun closeResource(id: String) { if (!closed.get()) exchange("closeResource", payload = obj("id" to id)) }
+    internal fun closeResource(id: String) { if (!closed.get()) exchange("closeResource", payload = obj("id" to id)) }
 
     /** Cancels owned tasks and closes owned sessions/leases. Does not remove persistent browser data. Idempotent. */
-    @Synchronized override fun close() {
+    override fun close(): Unit = synchronized(closeLock) {
         if (closed.get()) return
-        localResources.toList().forEach { runCatching { it.close() } }
-        localResources.clear()
-        try { exchange("disconnect") } finally {
-            closed.set(true)
-            active.toList().forEach { it.disconnected() }
-            executor.shutdown()
-        }
+        synchronized(this) { closing = true }
+        localResources.close()
+        try { exchange("disconnect") } catch (error: MediaRuntimeException) { if (!error.connectionGone()) throw error }
+        finishClose()
+    }
+
+    /** Transport loss/failed external cleanup must not explicitly release executable pins. */
+    internal fun abandon(): Unit = synchronized(closeLock) {
+        if (closed.get()) return
+        synchronized(this) { closing = true }
+        try { localResources.close(abandon = true) }
+        finally { try { exchange("disconnect") } catch (_: MediaRuntimeException) {} finally { finishClose() } }
+    }
+    private fun finishClose() {
+        closed.set(true)
+        active.toList().forEach { it.disconnected() }
+        executor.shutdown()
     }
 
     companion object {
+        /**
+         * Opt-in bounded background connection recovery. Does not replay media operations. Since 0.2.0.
+         * [beforeDisconnect] must stop caller-owned processes before completing; it runs on background threads.
+         * Own the returned component until plugin stop; do not close its [RuntimeConnection.current] directly.
+         */
+        @JvmStatic @JvmOverloads fun connectWhenAvailable(
+            pluginId: String, options: ConnectionOptions = ConnectionOptions(),
+            beforeDisconnect: java.util.function.Function<MediaRuntime, CompletionStage<Void>> = java.util.function.Function { CompletableFuture.completedFuture(null) }
+        ): RuntimeConnection {
+            require(pluginId.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}"))) { "Invalid plugin ID" }
+            return RuntimeConnection(pluginId, options, beforeDisconnect)
+        }
         /**
          * Connect using PluginContext.pluginId, on a background thread; throws RUNTIME_UNAVAILABLE if absent.
          * A failed attempt retains no connection; callers may retry after Runtime starts.
