@@ -6,7 +6,8 @@ import java.util.function.Function
 import kotlin.test.*
 
 class RuntimeConnectionTest {
-    private val options = ConnectionOptions(600, 20, 30, 100)
+    // Allow JMX/class loading on a cold CI worker; exhaustion has its own short deadline below.
+    private val options = ConnectionOptions(5_000, 20, 30, 100)
     private fun waitUntil(condition: () -> Boolean) {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(4)
         while (!condition()) { check(System.nanoTime() < deadline) { "Condition did not become true" }; Thread.sleep(5) }
