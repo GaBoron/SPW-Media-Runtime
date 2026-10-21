@@ -21,6 +21,7 @@ subprojects {
     dependencies {
         "compileOnly"(kotlin("stdlib"))
         "implementation"("org.jetbrains.kotlinx:kotlinx-serialization-json:1.9.0")
+        "testImplementation"(kotlin("test-junit"))
     }
     tasks.withType<Jar>().configureEach {
         archiveBaseName.set("spw-media-${project.name}")
@@ -47,6 +48,7 @@ subprojects {
     }
 }
 project(":sdk") { dependencies { "api"(project(":protocol")) } }
+project(":sdk") { dependencies { "testImplementation"(project(":runtime-core")) } }
 project(":protocol") {
     val generated = layout.buildDirectory.dir("generated/version")
     val generateVersion = tasks.register("generateVersion") {
@@ -142,6 +144,7 @@ tasks.register<Zip>("sdkBundle") {
     from(layout.buildDirectory.dir("maven"))
 }
 tasks.register("delivery") {
+    dependsOn(subprojects.filter { it.path != ":providers" }.map { "${it.path}:check" })
     dependsOn("plugin", "sdkBundle", "apiBundle", "nativeSources", "examplePlugin", ":examples:classes")
 }
 tasks.register<Zip>("apiBundle") {

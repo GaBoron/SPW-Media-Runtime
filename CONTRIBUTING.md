@@ -69,4 +69,6 @@ JVM 工程使用 Gradle Wrapper 与 JDK 25。完整原生准备入口在 Windows
 
 `sdkBundle` 将 SDK、协议、Provider 契约及可选 Compose 接入发布到 `build/maven/` 并打包为本地 Maven 仓库；Dokka 的版本对应接口参考生成在各模块的 `build/dokka/html/`。`examplePlugin` 生成可安装示例包。
 
-构建时可使用仓库外或忽略目录内的临时代码验证 SDK 接口和类加载连接。测试源码、夹具与验证报告不作为本工程的追踪内容。Examples 是公开接入文档的一部分，随实现保留并编译；功能验收由使用者在目标宿主中进行。
+协议、Core 与 SDK 的关键回归测试保留在对应模块的 `src/test/`，使用 Fake Provider 和可控子进程验证归属、任务终态、取消与清理。运行 `./gradlew.bat :protocol:test :runtime-core:test :sdk:test`；`delivery` 同时执行各模块的 `check`。测试不要求完整原生构建或正在运行的 SPW。
+
+临时媒体、一次性夹具和详细验证报告放在仓库外或忽略目录；清理时移入系统回收站，不永久删除。Examples 是公开接入文档的一部分，随实现保留并编译。自动检查与真实宿主验收分别进行，不以测试或构建通过代替宿主功能验收。
