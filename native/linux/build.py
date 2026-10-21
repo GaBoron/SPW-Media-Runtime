@@ -286,7 +286,7 @@ cpp_link_args = ['-target', 'x86_64-linux-gnu.2.35']
         reports.append({key: value for key, value in report.items() if key != 'undefined'})
         selected.add(name)
         pending.extend(report['needed'])
-    package_files = ['assets.properties', 'sysroot-provenance.json', 'elf-dependencies.json', 'packaged-files.txt']
+    package_files = ['assets.properties', 'asset-manifest.properties', 'sysroot-provenance.json', 'elf-dependencies.json', 'packaged-files.txt']
     for name in sorted(selected):
         directory = output / ('bin' if name in ('ffmpeg', 'ffprobe') else 'lib')
         directory.mkdir(exist_ok=True)

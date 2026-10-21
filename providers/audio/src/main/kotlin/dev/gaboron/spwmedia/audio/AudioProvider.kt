@@ -13,7 +13,7 @@ class AudioProvider : MediaProvider {
         var features: AudioFeatures? = null
     }
     private val captures = mutableMapOf<String, Shared>()
-    override fun availability(assets: Assets) = Capability(id, available = assets.platform == "windows-x64" && assets.find("platform") != null, reason = if (assets.platform != "windows-x64") "UNSUPPORTED_PLATFORM" else "Windows platform helper required", features = listOf("loopback", "microphone", "PCM-f32le", "waveform", "FFT", "RMS", "peak", "dBFS"))
+    override fun availability(assets: Assets) = Capability(id, available = assets.platform == "windows-x64" && assets.locate("platform") != null, reason = if (assets.platform != "windows-x64") "UNSUPPORTED_PLATFORM" else "Windows platform helper required", features = listOf("loopback", "microphone", "PCM-f32le", "waveform", "FFT", "RMS", "peak", "dBFS"))
     override fun invoke(context: Invocation, operation: String, arguments: JsonObject): JsonElement = when (operation) {
         "analyze" -> {
             val path = Path.of(arguments.text("path")); require(Files.size(path) <= 64 * 1024 * 1024)

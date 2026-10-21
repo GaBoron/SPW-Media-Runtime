@@ -8,7 +8,7 @@ import java.nio.file.Path
 /** FFmpeg CLI backend; no FFmpeg library is loaded into the host JVM. */
 class ProcessingProvider : MediaProvider {
     override val id = "processing"
-    override fun availability(assets: Assets) = Capability(id, available = assets.find("ffmpeg") != null && assets.find("ffprobe") != null, reason = if (assets.platform == "unsupported") "UNSUPPORTED_PLATFORM" else "FFmpeg/FFprobe required", features = listOf("probe", "transcode", "remux", "extract", "filters", "execute", "executeProbe"))
+    override fun availability(assets: Assets) = Capability(id, available = assets.locate("ffmpeg") != null && assets.locate("ffprobe") != null, reason = if (assets.platform == "unsupported") "UNSUPPORTED_PLATFORM" else "FFmpeg/FFprobe required", features = listOf("probe", "transcode", "remux", "extract", "filters", "execute", "executeProbe"))
     override fun invoke(context: Invocation, operation: String, arguments: JsonObject): JsonElement = when (operation) {
         "probe" -> {
             val input = arguments.text("input")

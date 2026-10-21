@@ -15,6 +15,8 @@ interface MediaProvider : AutoCloseable {
 interface Assets {
     val platform: String
     fun find(name: String): Path?
+    /** Side-effect-free package lookup. The returned path is for availability checks, not a leased tool. */
+    fun locate(name: String): Path? = find(name)
     fun version(name: String): String
 }
 /** A provider invocation scoped to a single owner and operation, including cancellation. */

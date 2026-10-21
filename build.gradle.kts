@@ -117,7 +117,7 @@ tasks.register<Exec>("prepareNative") {
     commandLine("pwsh", "-NoProfile", "-File", "native/prepare.ps1")
 }
 tasks.register<Zip>("plugin") {
-    dependsOn("prepareNative", ":spw-adapter:jar", ":native-worker:jar")
+    dependsOn("nativeManifest", ":spw-adapter:jar", ":native-worker:jar")
     archiveFileName.set("spw-media-runtime-${project.version}.spmod")
     destinationDirectory.set(layout.buildDirectory.dir("distributions"))
     into("classes") { from(project(":spw-adapter").tasks.named<Jar>("jar").map { zipTree(it.archiveFile) }) }
@@ -126,7 +126,7 @@ tasks.register<Zip>("plugin") {
         from(layout.buildDirectory.dir("native"))
         include {
             val relative = it.relativePath.pathString
-            !relative.startsWith("linux-x64/") || it.isDirectory || file("build/native/linux-x64/packaged-files.txt").readLines().contains(relative.removePrefix("linux-x64/"))
+            !relative.startsWith("linux-x64/") || it.isDirectory || relative == "linux-x64/asset-manifest.properties" || file("build/native/linux-x64/packaged-files.txt").readLines().contains(relative.removePrefix("linux-x64/"))
         }
     }
     into("licenses") { from("LICENSE", "NOTICE", "third-party") }
@@ -136,6 +136,17 @@ tasks.register<Zip>("plugin") {
             check(layout.buildDirectory.file("native/$it").get().asFile.isFile) { "Missing native asset: $it" }
         }
     }
+}
+tasks.register<Exec>("nativeManifest") {
+    dependsOn("prepareNative")
+    commandLine("pwsh", "-NoProfile", "-File", "native/manifest.ps1")
+}
+tasks.register<JavaExec>("cacheCleanup") {
+    dependsOn(":runtime-core:classes")
+    classpath = project(":runtime-core").extensions.getByType<SourceSetContainer>()["main"].runtimeClasspath + configurations.detachedConfiguration(dependencies.create("org.jetbrains.kotlin:kotlin-stdlib:2.4.20"))
+    mainClass.set("dev.gaboron.spwmedia.core.CacheCleanupKt")
+    javaLauncher.set(project(":runtime-core").extensions.getByType<JavaToolchainService>().launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    args(providers.gradleProperty("runtimeDataDir").getOrElse(""), providers.gradleProperty("cacheGeneration").getOrElse(""), providers.gradleProperty("applyCleanup").getOrElse("false"))
 }
 tasks.register<Zip>("sdkBundle") {
     dependsOn(subprojects.filter { it.name in setOf("protocol", "sdk", "sdk-compose", "provider-api") }.map { "${it.path}:publishAllPublicationsToDeliveryRepository" })

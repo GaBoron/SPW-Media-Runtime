@@ -13,8 +13,8 @@ class WebProvider : MediaProvider {
     private var installed = false
     @Synchronized override fun availability(assets: Assets): Capability {
         val supported = assets.platform == "windows-x64"
-        val helper = assets.find("platform")
-        val binariesReady = helper != null && assets.find("webview2") != null
+        val helper = assets.locate("platform")
+        val binariesReady = helper != null && assets.locate("webview2") != null
         if (supported && binariesReady && (checkedAt == 0L || System.nanoTime() - checkedAt > TimeUnit.SECONDS.toNanos(20))) {
             installed = runCatching {
                 val process = ProcessBuilder(helper!!.toString(), "web-status").start()

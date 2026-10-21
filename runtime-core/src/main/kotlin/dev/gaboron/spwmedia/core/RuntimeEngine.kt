@@ -12,7 +12,8 @@ import kotlin.concurrent.withLock
 /** Plugin-neutral composition root; adding a provider does not add a media-specific core branch. */
 class RuntimeEngine(
     private val providers: List<MediaProvider>, private val assets: Assets, private val storage: Path,
-    private val workerCommands: Map<String, List<String>>, concurrency: Int = 4
+    private val workerCommands: Map<String, List<String>>, concurrency: Int = 4,
+    private val workerCommand: (String) -> List<String>? = { workerCommands[it] }
 ) : AutoCloseable {
     private data class Owner(val plugin: String)
     private data class Resource(val owner: String, val capability: String, val session: ProviderSession)
@@ -133,7 +134,7 @@ class RuntimeEngine(
         override fun process(arguments: List<String>, progress: Boolean, durationSeconds: Double?) = ManagedProcess.run(arguments, task::check, task::onCancel, task::progress, if (progress) durationSeconds else null)
         override fun worker(mode: String, arguments: JsonObject, lifetime: ResourceLifetime): ProviderSession {
             task.check()
-            val command = workerCommands[mode] ?: throw ProviderFailure("DEPENDENCY_MISSING", "Requested backend is unavailable")
+            val command = workerCommand(mode) ?: throw ProviderFailure("DEPENDENCY_MISSING", "Requested backend is unavailable")
             var startup: AutoCloseable? = null
             val session = try { WorkerSession(command, arguments) { process -> startup = task.onCancel { ManagedProcess.terminate(process) } } } finally { startup?.close() }
             if (lifetime == ResourceLifetime.INVOCATION) task.onCancel { session.close() }
@@ -171,5 +172,6 @@ class RuntimeEngine(
         clients.keys.toList().forEach(::disconnect)
         providers.forEach { runCatching { it.close() } }
         workers.shutdownNow(); timers.shutdownNow()
+        (assets as? AutoCloseable)?.close()
     }
 }
