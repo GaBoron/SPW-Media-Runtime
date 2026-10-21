@@ -32,7 +32,7 @@ publicModules.each { module ->
         }
         mavenPublishing {
             coordinates(project.group.toString(), "spw-media-$module", project.version.toString())
-            // 0.37.0 waits for PUBLISHED by default. All modules share one deployment.
+            // gradle.properties explicitly waits for PUBLISHED, beyond validation alone.
             publishToMavenCentral(true)
             if (centralRelease) signAllPublications()
         }

@@ -12,7 +12,7 @@
 
 从 [Releases](https://github.com/GaBoron/SPW-Media-Runtime/releases) 获取对应版本的 Runtime 和接口参考。将 Runtime 导入 SPW 创意工坊并启用，再启动使用它的插件。SDK 是轻量编译依赖，不包含 FFmpeg、libmpv 或 Runtime 本体。
 
-插件工程使用 Maven Central 中已发布的 SDK 版本。以下示例对应 0.2.0，须在该版本完成发布后使用；离线接入或使用尚未发布的版本时，参见 [快速入门](docs/GETTING_STARTED.md)。
+插件工程可直接从 Maven Central 添加 SDK。离线接入方式见 [快速入门](docs/GETTING_STARTED.md)。
 
 ```kotlin
 repositories { mavenCentral() }

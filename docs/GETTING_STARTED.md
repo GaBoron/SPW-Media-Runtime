@@ -4,7 +4,7 @@
 
 ## 添加 SDK
 
-对应版本发布到 Maven Central 后，直接配置公共坐标。协议和轻量序列化依赖由 Gradle 自动解析，不需要分别下载 JAR。
+在插件工程中配置 Maven Central 和 SDK 依赖。协议和轻量序列化依赖由 Gradle 自动解析，不需要分别下载 JAR。
 
 ```kotlin
 repositories { mavenCentral() }

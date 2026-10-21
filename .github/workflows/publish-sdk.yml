@@ -4,16 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       operation:
-        description: Publish a new version or inspect an interrupted deployment
+        description: Publish, inspect an existing deployment, or verify Central downloads
         type: choice
-        options: [publish, status]
+        options: [publish, status, verify]
         default: publish
       version:
         description: Must match gradle.properties in the selected ref
         required: true
         default: '0.2.0'
       deployment_id:
-        description: Required for status; use the ID printed by the previous upload
+        description: Required for status, optional for verify; use the previous upload ID
         required: false
 
 permissions:
@@ -26,7 +26,7 @@ concurrency:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       REQUESTED_VERSION: ${{ inputs.version }}
       DEPLOYMENT_ID: ${{ inputs.deployment_id }}
@@ -49,7 +49,7 @@ jobs:
           test "$REQUESTED_VERSION" = "$version"
           test "$group" = 'io.github.gaboron.spwmedia'
       - name: Inspect existing deployment
-        if: inputs.operation == 'status'
+        if: inputs.operation == 'status' || (inputs.operation == 'verify' && inputs.deployment_id != '')
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
@@ -72,23 +72,41 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.MAVEN_GPG_PASSPHRASE }}
         run: bash ./gradlew publishSdkToCentral -PcentralRelease=true --no-daemon --console=plain --no-problems-report
       - name: Resolve published modules with a fresh cache
-        if: inputs.operation == 'publish'
+        if: inputs.operation == 'publish' || inputs.operation == 'verify'
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 20); do
-            if bash ./gradlew --gradle-user-home "$RUNNER_TEMP/central-consumer-$GITHUB_RUN_ID" \
-              -p verification/consumer-fixture checkPublicModules fixture \
-              "-PsdkVersion=$REQUESTED_VERSION" -PsdkGroup=io.github.gaboron.spwmedia \
-              --refresh-dependencies --no-daemon --console=plain --no-problems-report; then
-              exit 0
+          ready=false
+          for attempt in $(seq 1 60); do
+            unavailable=''
+            for module in sdk sdk-compose protocol provider-api; do
+              artifact="spw-media-$module"
+              for extension in pom jar; do
+                url="https://repo.maven.apache.org/maven2/io/github/gaboron/spwmedia/$artifact/$REQUESTED_VERSION/$artifact-$REQUESTED_VERSION.$extension"
+                status="$(curl --head --silent --show-error --output /dev/null --write-out '%{http_code}' \
+                  --connect-timeout 10 --max-time 20 "$url" || true)"
+                if test "$status" != '200'; then
+                  unavailable="$unavailable $artifact.$extension($status)"
+                fi
+              done
+            done
+            if test -z "$unavailable"; then
+              ready=true
+              break
             fi
+            echo "Waiting for Central downloads ($attempt/60); unavailable:$unavailable"
             sleep 30
           done
-          echo 'Central publication completed but consumer resolution is not yet confirmed; do not republish this version.' >&2
-          exit 1
+          if test "$ready" != 'true'; then
+            echo 'Central downloads are not confirmed; inspect the existing deployment and do not republish this version.' >&2
+            exit 1
+          fi
+          bash ./gradlew --gradle-user-home "$RUNNER_TEMP/central-consumer-$GITHUB_RUN_ID" \
+            -p verification/consumer-fixture checkPublicModules fixture \
+            "-PsdkVersion=$REQUESTED_VERSION" -PsdkGroup=io.github.gaboron.spwmedia \
+            --refresh-dependencies --no-daemon --console=plain --no-problems-report
       - name: Build the Kotlin consumer plugin from Central
-        if: inputs.operation == 'publish'
+        if: inputs.operation == 'publish' || inputs.operation == 'verify'
         run: >-
           bash ./gradlew --gradle-user-home "$RUNNER_TEMP/central-consumer-$GITHUB_RUN_ID"
           -p examples plugin "-PsdkVersion=$REQUESTED_VERSION" -PsdkGroup=io.github.gaboron.spwmedia
