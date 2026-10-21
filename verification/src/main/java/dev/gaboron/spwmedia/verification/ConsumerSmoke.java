@@ -25,8 +25,8 @@ public final class ConsumerSmoke {
             System.out.println("PASS consumer-first startup, independent SDKs and query zero-copy");
             for (var consumer : List.of(first, second)) {
                 consumer.invoke("probe");
-                consumer.await(s -> s.error() && s.text().contains("先点击生成"));
-                consumer.success("generate", value -> value.startsWith("测试视频："));
+                consumer.await(s -> s.error() && s.text().contains("创建演示素材"));
+                consumer.success("generate", value -> value.startsWith("演示视频："));
                 consumer.success("probe", consumer == first ? "时长=" : "格式=");
                 consumer.input(temporary.resolve("missing.mp4").toString());
                 consumer.invoke("probe"); consumer.await(s -> s.error() && s.text().contains("不存在"));

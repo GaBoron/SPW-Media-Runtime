@@ -1,76 +1,96 @@
 {
   "configs": [
     {
-      "title": "并发隔离示例",
+      "title": "媒体文件",
       "config": "config.json",
       "preferences": [
-        {
-          "type": "button",
-          "title": "重新连接 Runtime",
-          "arrow_type": "none",
-          "on_click": "dev.gaboron.spwmedia.parallel.ParallelPlugin.reconnect"
-        },
         {
           "key": "input",
           "type": "edittext",
           "title": "输入媒体路径",
-          "summary": "留空使用本示例生成的无声测试视频；不会改写输入文件。",
+          "summary": "填写本地视频的完整路径，供媒体信息、转码和播放使用；本插件单独保存选择，留空使用演示视频。",
           "default_value": ""
         },
         {
-          "key": "status",
-          "type": "edittext",
-          "title": "最近结果",
-          "summary": "任务完成时写入；可重新打开此页或点击查看状态。",
-          "default_value": "尚未连接"
-        },
-        {
           "type": "button",
-          "title": "生成测试视频",
+          "title": "创建演示素材",
+          "summary": "没有现成视频时可选用：生成 2 秒无声视频，完成后显示文件位置。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.parallel.ParallelPlugin.generate"
         },
         {
           "type": "button",
-          "title": "探测媒体",
+          "title": "读取媒体信息",
+          "summary": "查看所选文件的容器和媒体流类型。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.parallel.ParallelPlugin.probe"
-        },
+        }
+      ]
+    },
+    {
+      "title": "转码导出",
+      "config": "config.json",
+      "preferences": [
         {
           "type": "button",
-          "title": "开始可取消的实时转码",
+          "title": "按实时速度转码",
+          "summary": "循环读取所选视频，按播放速度导出最多 120 秒的无声 MP4；输出到本插件的临时目录。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.parallel.ParallelPlugin.transcode"
         },
         {
           "type": "button",
-          "title": "取消本插件任务",
+          "title": "取消当前任务",
+          "summary": "结束本插件正在执行的媒体任务；其他插件的任务继续运行。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.parallel.ParallelPlugin.cancel"
-        },
+        }
+      ]
+    },
+    {
+      "title": "播放与视频帧",
+      "config": "config.json",
+      "preferences": [
         {
           "type": "button",
-          "title": "创建静音共享帧播放器",
+          "title": "开始静音播放",
+          "summary": "循环播放所选视频，供帧读取使用；此示例通过帧数据展示独立播放器的接入。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.parallel.ParallelPlugin.play"
         },
         {
           "type": "button",
-          "title": "读取视频帧",
+          "title": "读取当前视频帧",
+          "summary": "播放开始后读取一帧，显示帧序号和字节数。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.parallel.ParallelPlugin.frames"
+        }
+      ]
+    },
+    {
+      "title": "连接与会话",
+      "config": "config.json",
+      "preferences": [
+        {
+          "type": "button",
+          "title": "查看最近结果",
+          "summary": "显示本插件最近一次操作的结果或错误；耗时操作完成后可再次查看。",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.parallel.ParallelPlugin.showStatus"
+        },
+        {
+          "type": "button",
+          "title": "重新连接 Runtime",
+          "summary": "Runtime 重新启用后恢复本插件的连接，随后可重新开始转码或播放。",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.parallel.ParallelPlugin.reconnect"
         },
         {
           "type": "button",
           "title": "关闭本插件会话",
+          "summary": "停止本插件的转码与播放，保留 Runtime 连接；其他插件继续工作。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.parallel.ParallelPlugin.closeSessions"
-        },
-        {
-          "type": "button",
-          "title": "查看状态",
-          "arrow_type": "none",
-          "on_click": "dev.gaboron.spwmedia.parallel.ParallelPlugin.showStatus"
         }
       ]
     }

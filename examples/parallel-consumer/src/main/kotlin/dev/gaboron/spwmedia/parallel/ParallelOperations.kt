@@ -23,7 +23,7 @@ class ParallelOperations(private val pluginId: String, private val config: Confi
     @Volatile var result = ActionStatus("尚未连接")
         private set
     val status get() = result.text
-    private val media get() = client ?: error("请启用 Runtime 并重新启用本示例")
+    private val media get() = client ?: error("请启用 Runtime，再在「连接与会话」中点击「重新连接 Runtime」")
     @Synchronized private fun report(message: String, isError: Boolean = false) {
         result = ActionStatus(message.take(4096), isError)
         if (!closed) synchronized(config) { config.set("status", status); config.save() }
@@ -44,8 +44,8 @@ class ParallelOperations(private val pluginId: String, private val config: Confi
         val explicit = config.get("input", "").takeIf { it.isNotBlank() }
         val path = explicit?.let(Path::of) ?: sample.takeIf(Files::isRegularFile)
             ?: config.get("generatedVideo", "").takeIf { it.isNotBlank() }?.let(Path::of)
-            ?: error("先点击生成测试视频并等待完成，或填写输入路径")
-        require(Files.isRegularFile(path)) { if (explicit == null) "测试视频不存在，请重新生成并等待完成" else "输入媒体不存在：$path" }
+            ?: error("请先点击「创建演示素材」并等待完成，或填写输入媒体路径")
+        require(Files.isRegularFile(path)) { if (explicit == null) "演示视频不存在，请重新创建素材并等待完成" else "输入媒体不存在：$path" }
         return path
     }
     private fun <T> submit(label: String, create: () -> RuntimeTask<T>, complete: (T) -> Unit) {
@@ -83,10 +83,10 @@ class ParallelOperations(private val pluginId: String, private val config: Confi
         }
     }
     fun generate() = dispatch {
-        require(!Files.exists(sample)) { "测试视频已存在，可直接使用" }
-        submit("生成无声测试视频", { media.processing.execute(listOf("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=15", "-t", "2", "-an", "-c:v", "mpeg4", sample.toString())) }) {
+        require(!Files.exists(sample)) { "演示素材已存在，可留空输入媒体路径直接使用" }
+        submit("创建演示素材", { media.processing.execute(listOf("-f", "lavfi", "-i", "testsrc2=size=320x180:rate=15", "-t", "2", "-an", "-c:v", "mpeg4", sample.toString())) }) {
             synchronized(config) { config.set("generatedVideo", sample.toString()); config.save() }
-            report("测试视频：" + sample)
+            report("演示视频：" + sample)
         }
     }
     fun probe() = dispatch { submit("探测", { media.processing.probe(input()) }) { report("格式=" + it.format + "；流=" + it.streams.map { stream -> stream.type }) } }
@@ -94,7 +94,7 @@ class ParallelOperations(private val pluginId: String, private val config: Confi
         val destination = directory.resolve(UUID.randomUUID().toString() + ".mp4")
         submit("实时转码，可取消", { media.processing.execute(listOf("-re", "-stream_loop", "-1", "-i", input().toString(), "-t", "120", "-an", "-c:v", "mpeg4", destination.toString())) }) { report("转码完成：" + destination) }
     }
-    fun cancel() = dispatch { report(if (task?.cancel() == true) "已请求取消，等待终态" else "没有可取消任务") }
+    fun cancel() = dispatch { report(if (task?.cancel() == true) "已请求取消，正在等待任务结束" else "没有可取消任务") }
     fun play() = dispatch {
         player?.close(); player = null
         val path = input()
@@ -104,7 +104,7 @@ class ParallelOperations(private val pluginId: String, private val config: Confi
         }
     }
     fun frames() = dispatch {
-        val producer = requireNotNull(player) { "先创建播放器" }
+        val producer = requireNotNull(player) { "请先点击「开始静音播放」" }
         producer.frames().use { buffer ->
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
             var frame: MediaBuffer? = null

@@ -1,112 +1,150 @@
 {
   "configs": [
     {
-      "title": "SDK 功能示例",
+      "title": "媒体文件",
       "config": "config.json",
       "preferences": [
-        {
-          "type": "button",
-          "title": "重新连接 Runtime",
-          "arrow_type": "none",
-          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.reconnect"
-        },
         {
           "key": "input",
           "type": "edittext",
           "title": "输入媒体路径",
-          "summary": "留空使用本示例生成的无声测试视频；不会改写输入文件。",
+          "summary": "填写本地文件的完整路径，供媒体信息、转码、播放和标签读取使用；留空使用演示素材。",
           "default_value": ""
         },
         {
-          "key": "status",
-          "type": "edittext",
-          "title": "最近结果",
-          "summary": "任务完成时写入；可重新打开此页或点击查看状态。",
-          "default_value": "尚未连接"
-        },
-        {
           "type": "button",
-          "title": "生成测试视频",
+          "title": "创建演示素材",
+          "summary": "没有现成媒体时可选用：生成 2 秒无声视频和带标题标签的静音 FLAC，完成后显示文件位置。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.generate"
         },
         {
           "type": "button",
-          "title": "探测媒体",
+          "title": "读取媒体信息",
+          "summary": "查看所选文件的容器、时长、音视频流和编码格式。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.probe"
-        },
+        }
+      ]
+    },
+    {
+      "title": "转码导出",
+      "config": "config.json",
+      "preferences": [
         {
           "type": "button",
-          "title": "普通转码",
+          "title": "导出 MP4 视频",
+          "summary": "将所选视频转为无声 MPEG-4 视频；输出到本示例的临时目录，完成后显示路径。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.transcode"
         },
         {
           "type": "button",
-          "title": "开始可取消的实时转码",
+          "title": "按实时速度转码",
+          "summary": "循环读取所选视频，按播放速度导出最多 120 秒的无声 MP4，可在处理中取消。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.slowTranscode"
         },
         {
           "type": "button",
-          "title": "取消本插件任务",
+          "title": "取消当前任务",
+          "summary": "请求结束本示例正在执行的媒体任务；结束后可在最近结果中查看最终状态。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.cancel"
-        },
+        }
+      ]
+    },
+    {
+      "title": "播放与预览",
+      "config": "config.json",
+      "preferences": [
         {
           "type": "button",
-          "title": "创建静音共享帧播放器",
+          "title": "开始静音播放",
+          "summary": "循环播放所选视频，供预览和帧读取使用；预览窗口由下方按钮打开。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.play"
         },
         {
           "type": "button",
-          "title": "检查视频帧",
-          "arrow_type": "none",
-          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.frames"
-        },
-        {
-          "type": "button",
           "title": "打开视频预览",
+          "summary": "在独立窗口中显示正在播放的视频；关闭窗口时同时停止本次播放。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.preview"
         },
         {
           "type": "button",
+          "title": "读取当前视频帧",
+          "summary": "播放开始后读取一帧，显示尺寸、序号和字节数，展示共享帧的消费方式。",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.frames"
+        }
+      ]
+    },
+    {
+      "title": "音频与标签",
+      "config": "config.json",
+      "preferences": [
+        {
+          "type": "button",
           "title": "读取标签",
+          "summary": "读取所选音频的标签和封面数量；输入留空时使用演示 FLAC。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.metadata"
         },
         {
           "type": "button",
-          "title": "创建回环采集 / 读取分析",
+          "title": "采集系统音频并分析（Windows）",
+          "summary": "首次点击开始回环采集，再次点击读取采样率、RMS 和峰值；可在连接与会话中停止采集。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.audio"
-        },
+        }
+      ]
+    },
+    {
+      "title": "网页与图像（Windows）",
+      "config": "config.json",
+      "preferences": [
         {
           "type": "button",
-          "title": "主动打开空白网页",
+          "title": "打开空白网页",
+          "summary": "打开独立 WebView2 会话，展示网页接入；需要系统已安装 Evergreen Runtime。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.web"
         },
         {
           "type": "button",
-          "title": "发布并读取渲染帧",
+          "title": "传递彩色图像帧",
+          "summary": "将 2×2 彩色图像提交到渲染目标，再读取返回的帧数据。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.render"
+        }
+      ]
+    },
+    {
+      "title": "连接与会话",
+      "config": "config.json",
+      "preferences": [
+        {
+          "type": "button",
+          "title": "查看最近结果",
+          "summary": "显示最近一次操作的结果或错误；耗时操作完成后可再次查看。",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.showStatus"
+        },
+        {
+          "type": "button",
+          "title": "重新连接 Runtime",
+          "summary": "Runtime 重新启用后恢复连接，随后可按需开始新的任务或会话。",
+          "arrow_type": "none",
+          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.reconnect"
         },
         {
           "type": "button",
           "title": "关闭本插件会话",
+          "summary": "停止本示例的播放、预览、网页和音频采集，保留 Runtime 连接。",
           "arrow_type": "none",
           "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.closeSessions"
-        },
-        {
-          "type": "button",
-          "title": "查看状态",
-          "arrow_type": "none",
-          "on_click": "dev.gaboron.spwmedia.examples.MediaExamplePlugin.showStatus"
         }
       ]
     }

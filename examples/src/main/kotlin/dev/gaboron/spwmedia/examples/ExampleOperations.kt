@@ -27,7 +27,7 @@ class ExampleOperations(private val pluginId: String, private val config: Config
     val status get() = result.text
     @Volatile var connectionError: String? = null
         private set
-    val runtime: MediaRuntime get() = connection ?: error("请先启用 Runtime 并重新启用本示例")
+    val runtime: MediaRuntime get() = connection ?: error("请启用 Runtime，再在「连接与会话」中点击「重新连接 Runtime」")
     fun connect() = dispatch {
         if (connecting) return@dispatch
         connection?.let { existing ->
@@ -76,8 +76,8 @@ class ExampleOperations(private val pluginId: String, private val config: Config
         val explicit = config.get("input", "").takeIf { it.isNotBlank() }
         val path = explicit?.let(Path::of) ?: samples?.video?.takeIf(Files::isRegularFile)
             ?: config.get("generatedVideo", "").takeIf { it.isNotBlank() }?.let(Path::of)
-            ?: error("先点击生成测试视频并等待完成，或填写输入路径")
-        require(Files.isRegularFile(path)) { if (explicit == null) "测试视频不存在，请重新生成并等待完成" else "输入媒体不存在：$path" }
+            ?: error("请先点击「创建演示素材」并等待完成，或填写输入媒体路径")
+        require(Files.isRegularFile(path)) { if (explicit == null) "演示视频不存在，请重新创建素材并等待完成" else "输入媒体不存在：$path" }
         return path
     }
     private fun workspace() = samples ?: ExampleSamples().also { samples = it }
@@ -91,9 +91,9 @@ class ExampleOperations(private val pluginId: String, private val config: Config
     }
     fun generate() = dispatch {
         val sample = workspace()
-        task("生成无声测试视频", { runtime.processing.execute(sample.videoArguments()) }) {
+        task("创建演示素材", { runtime.processing.execute(sample.videoArguments()) }) {
             synchronized(config) { config.set("generatedVideo", sample.video.toString()); config.set("generatedAudio", sample.audio.toString()); config.save() }
-            report("测试视频：${sample.video}；标签音频：${sample.audio}；可探测、转码、播放或读取标签")
+            report("演示视频：${sample.video}；标签音频：${sample.audio}；可读取媒体信息、转码、播放或读取标签")
         }
     }
     fun probe() = dispatch { task("探测", { runtime.processing.probe(input()) }) { info -> report("${info.format}；时长=${info.durationSeconds}；流=${info.streams.map { it.type + "/" + it.codec }}") } }
@@ -105,7 +105,7 @@ class ExampleOperations(private val pluginId: String, private val config: Config
         val destination = workspace().output("mp4")
         task("可取消的实时转码", { runtime.processing.execute(listOf("-re", "-stream_loop", "-1", "-i", input().toString(), "-t", "120", "-an", "-c:v", "mpeg4", destination.toString())) }) { report("实时转码完成：$destination") }
     }
-    fun cancel() = dispatch { report(if (active?.cancel() == true) "已请求取消；终态由 result 返回" else "没有可取消的任务") }
+    fun cancel() = dispatch { report(if (active?.cancel() == true) "已请求取消，正在等待任务结束" else "没有可取消的任务") }
     fun play() = dispatch {
         closePlayer()
         val path = input()
@@ -115,7 +115,7 @@ class ExampleOperations(private val pluginId: String, private val config: Config
         }
     }
     fun frames() = dispatch {
-        requireNotNull(player) { "先创建播放器" }.frames().use { buffer ->
+        requireNotNull(player) { "请先点击「开始静音播放」" }.frames().use { buffer ->
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3)
             var frame: MediaBuffer? = null
             while (frame == null && System.nanoTime() < deadline) { frame = buffer.latest(); if (frame == null) Thread.sleep(20) }
@@ -126,7 +126,7 @@ class ExampleOperations(private val pluginId: String, private val config: Config
     }
     fun preview() = dispatch {
         if (preview != null) { report("预览已打开，请先关闭现有预览"); return@dispatch }
-        val producer = requireNotNull(player) { "先创建播放器" }
+        val producer = requireNotNull(player) { "请先点击「开始静音播放」" }
         val frames = producer.frames()
         val view = ExamplePreview(frames) {
             synchronized(this) { preview = null; if (player === producer) player = null }
@@ -138,7 +138,7 @@ class ExampleOperations(private val pluginId: String, private val config: Config
         config.reload()
         val path = if (config.get("input", "").isNotBlank()) input() else samples?.audio?.takeIf(Files::isRegularFile)
             ?: config.get("generatedAudio", "").takeIf { it.isNotBlank() }?.let(Path::of)?.takeIf(Files::isRegularFile)
-            ?: error("请先生成测试视频及标签音频，或填写受支持的音频路径")
+            ?: error("请先点击「创建演示素材」并等待完成，或填写受支持的音频路径")
         task("读取标签", { runtime.metadata.read(path) }) { report("标签=${it.fields}；封面=${it.artworkCount}") }
     }
     fun audio() = dispatch {
