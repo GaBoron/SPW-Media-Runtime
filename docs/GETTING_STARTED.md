@@ -1,6 +1,6 @@
 # SDK 快速入门
 
-本文面向 SPW 插件作者，适用于 Runtime/SDK 0.2.0、Workshop API 0.1.0-dev23、JDK 25。先安装并启用匹配的 Runtime；SDK 本身不包含媒体实现或原生资源。
+本文面向 SPW 插件作者，适用于 Runtime/SDK 0.2.1、Workshop API 0.1.0-dev23、JDK 25。先安装并启用匹配的 Runtime；SDK 本身不包含媒体实现或原生资源。
 
 ## 添加 SDK
 
@@ -9,7 +9,7 @@
 ```kotlin
 repositories { mavenCentral() }
 
-val mediaVersion = "0.2.0"
+val mediaVersion = "0.2.1"
 dependencies {
     implementation("io.github.gaboron.spwmedia:spw-media-sdk:$mediaVersion")
     // 需要 Compose 视频帧显示时添加：

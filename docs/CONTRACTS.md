@@ -1,6 +1,6 @@
-# 0.2.0 接口契约
+# 0.2.1 接口契约
 
-适用于 SDK/API 0.2.0、控制协议 1。API Reference 由公开源码和 KDoc 生成；本文说明跨模块共用的行为。
+适用于 SDK/API 0.2.1、控制协议 1。API Reference 由公开源码和 KDoc 生成；本文说明跨模块共用的行为。
 
 ## 版本与发现
 
@@ -63,6 +63,6 @@ Windows 静默回收使用随包提供的辅助程序；Linux 使用系统 `gio 
 | `METADATA_READ_FAILED` | 核对标签后端支持的音频格式与文件完整性；无音轨视频不作为音频标签样本。 |
 | `CANCELLED` / `TIMED_OUT` | 视为终止，检查操作可能已经产生的输出后决定是否重试。 |
 
-0.2.0 继续使用控制协议 1，既有 0.1.x 消费者可连接。升级 SDK 时将 Maven groupId 从 `dev.gaboron.spwmedia` 改为 `io.github.gaboron.spwmedia`，同步升级 SDK/协议/Compose 依赖；代码包名不变。旧版工具调用方同样需要在自有进程退出后显式释放租约，否则可能留下保守保护标记。项目仍处于初始开发阶段。
+0.2.1 继续使用控制协议 1，既有 0.1.x 消费者可连接。升级 SDK 时将 Maven groupId 从 `dev.gaboron.spwmedia` 改为 `io.github.gaboron.spwmedia`，同步升级 SDK/协议/Compose 依赖；代码包名不变。旧版工具调用方同样需要在自有进程退出后显式释放租约，否则可能留下保守保护标记。项目仍处于初始开发阶段。
 
 `RuntimeConnection` 是可选组件，不改变普通 `connect()` 的同步行为。默认连接轮次上限 30 秒、重试间隔 1 秒、健康检查 30 秒、清理上限 5 秒。只有新连接成功才增加 generation；清理失败暂停恢复，超时轮次不无限重试。重建连接不重放任务、恢复旧会话或复用旧令牌。

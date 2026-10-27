@@ -17,7 +17,7 @@
 ```kotlin
 repositories { mavenCentral() }
 
-val mediaVersion = "0.2.0"
+val mediaVersion = "0.2.1"
 dependencies {
     implementation("io.github.gaboron.spwmedia:spw-media-sdk:$mediaVersion")
     // 需要 Compose 视频帧显示时添加：

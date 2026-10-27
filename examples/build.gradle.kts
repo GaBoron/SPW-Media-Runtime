@@ -5,7 +5,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose") version "2.4.20"
     id("org.jetbrains.compose") version "1.12.1"
 }
-val sdkVersion = providers.gradleProperty("sdkVersion").getOrElse("0.2.0")
+val sdkVersion = providers.gradleProperty("sdkVersion").getOrElse("0.2.1")
 val sdkGroup = providers.gradleProperty("sdkGroup").getOrElse("io.github.gaboron.spwmedia")
 group = sdkGroup
 version = sdkVersion

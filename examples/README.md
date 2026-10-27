@@ -1,6 +1,6 @@
 # SDK 接入示例
 
-适用于 Runtime/SDK 0.2.0、SPW Workshop API dev23 与 JDK 25。一个完整示例通过公共 Maven 坐标展示媒体任务、静音播放、主动预览及正确清理。
+适用于 Runtime/SDK 0.2.1、SPW Workshop API dev23 与 JDK 25。一个完整示例通过公共 Maven 坐标展示媒体任务、静音播放、主动预览及正确清理。
 
 ## 构建与安装
 
