@@ -9,6 +9,7 @@ import dev.gaboron.spwmedia.web.WebProvider
 import dev.gaboron.spwmedia.metadata.MetadataProvider
 import dev.gaboron.spwmedia.audio.AudioProvider
 import dev.gaboron.spwmedia.rendering.RenderingProvider
+import java.net.JarURLConnection
 import java.nio.file.*
 
 /** Host adapter owns only composition, installation paths and SPW lifecycle. */
@@ -18,16 +19,19 @@ class MediaRuntimePlugin(context: PluginContext) : SpwPlugin(context) {
         if (endpoint != null) return
         val supplied = Path.of(pluginContext.pluginPath).toAbsolutePath()
         val contextRoot = if (Files.isDirectory(supplied)) supplied else supplied.parent
-        val ownCode = Path.of(javaClass.protectionDomain.codeSource.location.toURI())
-        val codeRoot = if (Files.isDirectory(ownCode) && ownCode.fileName.toString() == "classes") ownCode.parent else ownCode.parent
-        val root = listOf(contextRoot, codeRoot).firstOrNull { Files.isDirectory(it.resolve("native")) } ?: contextRoot
+        val root = contextRoot.takeIf { Files.isDirectory(it.resolve("native")) }
+            ?: codeLocation(javaClass)?.parent?.takeIf { Files.isDirectory(it.resolve("native")) }
+            ?: contextRoot
         val storage = runtimeStorage()
         val classpath = buildList {
             Files.list(root).use { stream -> stream.filter { it.toString().endsWith(".jar") }.forEach { add(it.toString()) } }
             val lib = root.resolve("lib")
             if (Files.isDirectory(lib)) Files.list(lib).use { stream -> stream.filter { it.toString().endsWith(".jar") }.forEach { add(it.toString()) } }
             // Worker JVM needs Kotlin; reuse the host's existing Kotlin location rather than bundling another copy.
-            add(kotlin.Unit::class.java.protectionDomain.codeSource.location.toURI().let { Path.of(it).toString() })
+            val kotlinCode = checkNotNull(codeLocation(kotlin.Unit::class.java)) {
+                "Cannot locate the host Kotlin runtime for the media worker JVM"
+            }
+            add(kotlinCode.toString())
         }.joinToString(java.io.File.pathSeparator)
         val assets = NativeAssets(root.resolve("native"), storage.resolve("native").resolve(pluginContext.pluginVersion))
         val engine = RuntimeEngine(listOf(ProcessingProvider(), PlaybackProvider(), WebProvider(), MetadataProvider(), AudioProvider(), RenderingProvider()), assets, storage, emptyMap(), workerCommand = { mode ->
@@ -42,5 +46,25 @@ class MediaRuntimePlugin(context: PluginContext) : SpwPlugin(context) {
             endpoint = RuntimeEndpoint(engine, identity::current)
         } catch (e: Throwable) { engine.close(); throw e }
     }
+
+    private fun codeLocation(type: Class<*>): Path? {
+        val location = type.protectionDomain?.codeSource?.location
+        if (location?.protocol == "file") return Path.of(location.toURI())
+
+        // Host classes may have no CodeSource location; resolve their classpath from resources.
+        val name = type.name.replace('.', '/') + ".class"
+        val resource = type.getResource("/$name")
+        if (resource?.protocol == "jar") {
+            val archive = (resource.openConnection() as JarURLConnection).jarFileURL
+            if (archive.protocol == "file") return Path.of(archive.toURI())
+        }
+        if (resource?.protocol == "file") {
+            var root = Path.of(resource.toURI())
+            repeat(name.count { it == '/' } + 1) { root = root.parent ?: return null }
+            return root
+        }
+        return null
+    }
+
     override fun stop() { endpoint?.close(); endpoint = null }
 }
